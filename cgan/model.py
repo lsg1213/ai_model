@@ -16,49 +16,34 @@ BATCH_SIZE = 256
 class_num = 10
 
 def generator(output_shape=(28,28,1), class_num=class_num, stddev=0.2, z_dim=noise_dim):
-    # noise_input = Input(shape=(z_dim,))
-    # label_input = Input(shape=(1,))
-    # label_embedding = Embedding(class_num, z_dim)(label_input)
-    # label_embedding = Flatten()(label_embedding)
-
-    # model_input = Multiply()([noise_input, label_embedding])
+    noise_input = Input(shape=(z_dim,))
+    label_input = Input(shape=(1,))
+    y = Embedding(1, [class_num, z_dim])(label_input)
+    y = Flatten()(y)
+    model_input = Concatenate()([noise_input, y])
     
-    # z = Dense(1024,kernel_initializer=tf.random_normal_initializer(stddev=stddev))(model_input)
-    # z = BatchNormalization()(z)
-    # z = ReLU()(z)
-    # z = Dense(128*7*7,kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    # z = BatchNormalization()(z)
-    # z = ReLU()(z)
-    # z = Reshape([7,7,128])(z)
-    # z = Conv2DTranspose(64, (4,4), (2,2),padding='same',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    # z = BatchNormalization()(z)
-    # z = ReLU()(z)
-    # out = Conv2DTranspose(1, (4,4), (2,2),padding='same',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    model = Sequential()
+    model = tf.keras.Sequential()
+    model.add(layers.Dense(7*7*256, use_bias=False))
+    model.add(layers.BatchNormalization())
+    model.add(layers.LeakyReLU())
 
-    model.add(Dense(256, input_dim=z_dim))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(BatchNormalization(momentum=0.8))
-    model.add(Dense(512))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(BatchNormalization(momentum=0.8))
-    model.add(Dense(1024))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(BatchNormalization(momentum=0.8))
-    model.add(Dense(np.prod(output_shape), activation='tanh'))
-    model.add(Reshape(output_shape))
+    model.add(layers.Reshape((7, 7, 256)))
+    assert model.output_shape == (None, 7, 7, 256) # 주목: 배치사이즈로 None이 주어집니다.
 
-    # model.summary()
+    model.add(layers.Conv2DTranspose(128, (5, 5), strides=(1, 1), padding='same', use_bias=False))
+    assert model.output_shape == (None, 7, 7, 128)
+    model.add(layers.BatchNormalization())
+    model.add(layers.LeakyReLU())
 
-    noise = Input(shape=(z_dim,))
-    label = Input(shape=(1,), dtype='int32')
-    label_embedding = Flatten()(Embedding(class_num, z_dim)(label))
+    model.add(layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False))
+    assert model.output_shape == (None, 14, 14, 64)
+    model.add(layers.BatchNormalization())
+    model.add(layers.LeakyReLU())
 
-    model_input = multiply([noise, label_embedding])
-    img = model(model_input)
+    model.add(layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh'))
+    assert model.output_shape == (None, 28, 28, 1)
 
-    return Model([noise, label], img)
-    return Model(inputs=[noise_input, label_input], outputs=out)
+    return Model(inputs=[noise_input, label_input], outs=model)
 
     
 
@@ -68,50 +53,26 @@ def discriminator(input_shape=(28,28,1), class_num=class_num, stddev=0.2):
     image_input = Input(shape=input_shape)
     reshaped_image = Flatten()(image_input)
 
-    # label_input = Input(shape=(1,))
-    # label_embedding = Embedding(class_num, np.prod(input_shape))(label_input)
-    # label_embedding = Flatten()(label_embedding)
-    # y = Multiply()([reshaped_image, label_embedding])
+    label_input = Input(shape=(1,))
+    y = Embedding(1, [class_num, z_dim])(label_input)
+    y = Flatten()(y)
+    y = Concatenate()([reshaped_image, y])
     
-    # y = Reshape(input_shape)(y)
-    # z = Conv2D(64,(4,4),(2,2),padding='same',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(y)
-    # z = ReLU(negative_slope=0.2)(z)
-    # z = Conv2D(128,(4,4),(2,2),padding='same',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    # z = BatchNormalization()(z)
-    # z = ReLU(negative_slope=0.2)(z)
-    # z = Flatten()(z)
-    # z = Dense(1024,kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    # z = BatchNormalization()(z)
-    # logit = ReLU(negative_slope=0.2)(z)
-    # out = Dense(1,activation='sigmoid',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(logit)
+    model = tf.keras.Sequential()
+    model.add(layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',
+                                     input_shape=[28, 28, 1]))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.3))
+
+    model.add(layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'))
+    model.add(layers.LeakyReLU())
+    model.add(layers.Dropout(0.3))
+
+    model.add(layers.Flatten())
+    model.add(layers.Dense(1))
+
     
-    model = Sequential()
-
-    model.add(Dense(512, input_dim=np.prod(input_shape)))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(Dense(512))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(Dropout(0.4))
-    model.add(Dense(512))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(Dropout(0.4))
-    model.add(Dense(1, activation='sigmoid'))
-    model.summary()
-
-    img = Input(shape=input_shape)
-    label = Input(shape=(1,), dtype='int32')
-
-    label_embedding = Flatten()(Embedding(class_num, np.prod(input_shape))(label))
-    flat_img = Flatten()(img)
-
-    model_input = multiply([flat_img, label_embedding])
-
-    validity = model(model_input)
-
-    return Model([img, label], validity)
-    
-    
-    return Model(inputs=[image_input, label_input], outputs=out)
+    return Model(inputs=[image_input, label_input], outs=model)
 
 
 
@@ -122,16 +83,7 @@ if __name__ == "__main__":
         
     generator = generator()
     discriminator = discriminator()
-    # cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-    # def discriminator_loss(real_output, fake_output):
-    #     real_loss = cross_entropy(tf.ones_like(real_output), real_output)
-    #     fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)
-    #     total_loss = real_loss + fake_loss
-    #     return total_loss
-
-    # def generator_loss(fake_output):
-    #     return cross_entropy(tf.ones_like(fake_output), fake_output)
 
     generator_optimizer = tf.keras.optimizers.Adam(0.0002*5, 0.5)
     discriminator_optimizer = tf.keras.optimizers.Adam(0.0002, 0.5)
@@ -156,32 +108,7 @@ if __name__ == "__main__":
     
     (train_images, train_labels), (_, _) = tf.keras.datasets.mnist.load_data()
 
-    # 이 시드를 시간이 지나도 재활용하겠습니다. 
-    # (GIF 애니메이션에서 진전 내용을 시각화하는데 쉽기 때문입니다.) 
-    # seed = tf.random.normal([num_examples_to_generate, noise_dim])
-    
-    # `tf.function`이 어떻게 사용되는지 주목해 주세요.
-    # 이 데코레이터는 함수를 "컴파일"합니다.
-    # @tf.function
-    # def train_step(images, labels, epoch):
-        # noise = tf.random.normal([images.shape[0], noise_dim])
-        
-    
-        # tf.print (f"{epoch} [D loss: {d_loss[0]}, acc.: {100*d_loss[1]}] [G loss: {g_loss}]")
 
-        
-        # with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
-        #     generated_images = generator([noise, labels], training=True)
-            
-        #     real_output = discriminator([tf.reshape(images,(images.shape[0],28,28,1)), labels], training=True)
-        #     fake_output = discriminator([generated_images, labels], training=True)
-        #     gen_loss = generator_loss(fake_output)
-        #     disc_loss = discriminator_loss(real_output, fake_output)
-        #     gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)
-        #     gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)
-
-        #     generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))
-        #     discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))
 
     def generate_and_save_images(model, epoch, test_input):
         # `training`이 False로 맞춰진 것을 주목하세요.
@@ -263,7 +190,8 @@ if __name__ == "__main__":
         #                         epochs,
         #                         seed)
         sample_images(generator, epochs)
-
+    generator.summary()
+    
     train_images = (train_images - 127.5) / 127.5 # 이미지를 [-1, 1]로 정규화합니다.
     BUFFER_SIZE = 60000
     perm = np.random.permutation(train_images.shape[0])
