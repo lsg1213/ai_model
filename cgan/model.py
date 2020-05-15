@@ -1,4 +1,3 @@
-
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.layers import *
@@ -16,24 +15,6 @@ BATCH_SIZE = 256
 class_num = 10
 
 def generator(output_shape=(28,28,1), class_num=class_num, stddev=0.2, z_dim=noise_dim):
-    # noise_input = Input(shape=(z_dim,))
-    # label_input = Input(shape=(1,))
-    # label_embedding = Embedding(class_num, z_dim)(label_input)
-    # label_embedding = Flatten()(label_embedding)
-
-    # model_input = Multiply()([noise_input, label_embedding])
-    
-    # z = Dense(1024,kernel_initializer=tf.random_normal_initializer(stddev=stddev))(model_input)
-    # z = BatchNormalization()(z)
-    # z = ReLU()(z)
-    # z = Dense(128*7*7,kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    # z = BatchNormalization()(z)
-    # z = ReLU()(z)
-    # z = Reshape([7,7,128])(z)
-    # z = Conv2DTranspose(64, (4,4), (2,2),padding='same',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
-    # z = BatchNormalization()(z)
-    # z = ReLU()(z)
-    # out = Conv2DTranspose(1, (4,4), (2,2),padding='same',kernel_initializer=tf.random_normal_initializer(stddev=stddev))(z)
     model = Sequential()
 
     model.add(Dense(256, input_dim=z_dim))
@@ -58,7 +39,6 @@ def generator(output_shape=(28,28,1), class_num=class_num, stddev=0.2, z_dim=noi
     img = model(model_input)
 
     return Model([noise, label], img)
-    return Model(inputs=[noise_input, label_input], outputs=out)
 
     
 
