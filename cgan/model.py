@@ -1,4 +1,3 @@
-
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.layers import *
@@ -16,34 +15,33 @@ BATCH_SIZE = 256
 class_num = 10
 
 def generator(output_shape=(28,28,1), class_num=class_num, stddev=0.2, z_dim=noise_dim):
-    noise_input = Input(shape=(z_dim,))
-    label_input = Input(shape=(1,))
-    y = Embedding(1, [class_num, z_dim])(label_input)
-    y = Flatten()(y)
-    model_input = Concatenate()([noise_input, y])
-    
-    model = tf.keras.Sequential()
-    model.add(layers.Dense(7*7*256, use_bias=False))
-    model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
 
-    model.add(layers.Reshape((7, 7, 256)))
-    assert model.output_shape == (None, 7, 7, 256) # 주목: 배치사이즈로 None이 주어집니다.
+    model = Sequential()
 
-    model.add(layers.Conv2DTranspose(128, (5, 5), strides=(1, 1), padding='same', use_bias=False))
-    assert model.output_shape == (None, 7, 7, 128)
-    model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
+    model.add(Dense(256, input_dim=z_dim))
+    model.add(LeakyReLU(alpha=0.2))
+    model.add(BatchNormalization(momentum=0.8))
+    model.add(Dense(512))
+    model.add(LeakyReLU(alpha=0.2))
+    model.add(BatchNormalization(momentum=0.8))
+    model.add(Dense(1024))
+    model.add(LeakyReLU(alpha=0.2))
+    model.add(BatchNormalization(momentum=0.8))
+    model.add(Dense(np.prod(output_shape), activation='tanh'))
+    model.add(Reshape(output_shape))
 
-    model.add(layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False))
-    assert model.output_shape == (None, 14, 14, 64)
-    model.add(layers.BatchNormalization())
-    model.add(layers.LeakyReLU())
+    # model.summary()
 
-    model.add(layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh'))
-    assert model.output_shape == (None, 28, 28, 1)
+    noise = Input(shape=(z_dim,))
+    label = Input(shape=(1,), dtype='int32')
+    label_embedding = Flatten()(Embedding(class_num, z_dim)(label))
 
-    return Model(inputs=[noise_input, label_input], outs=model)
+    model_input = multiply([noise, label_embedding])
+    img = model(model_input)
+
+    return Model([noise, label], img)
+
+
 
     
 
