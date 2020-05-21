@@ -1,3 +1,4 @@
 /**/*.gif
 /**/*.wav
 /**/training_checkpoints
+/**/.*
