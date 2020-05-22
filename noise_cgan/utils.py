@@ -63,9 +63,12 @@ def preprocessing(data, feature):
             train_data.append(data[i])
     else:
         raise ValueError('wrong feature')
+    train_data = np.array(train_data)
+    if train_data.ndim == 2:
+        train_data = np.expand_dims(train_data,axis=-1)
     print(f'data preprocessing complete, data feature is {feature}')
-    return np.array(train_data)
+    return train_data
 
 if __name__ == "__main__":
-    a,b=get_data()
+    a,b,c=get_data()
     print(a.shape, b.shape)
