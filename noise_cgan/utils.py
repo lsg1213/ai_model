@@ -48,9 +48,9 @@ def get_data(resample_sr=16000, length=4, feature='stft', audio_path=audio_path)
             print(f'{step+1}/{dir_.shape[0]}')
         step += 1
     train_label = np.array(train_label)
-    return (preprocessing(resampled_data,feature), train_label, label_list)
+    return (preprocessing(resampled_data,feature, resample_sr), train_label, label_list)
 
-def preprocessing(data, feature):
+def preprocessing(data, feature, resample_sr):
     train_data = []
     if feature == 'stft':
         for i in range(len(data)):
