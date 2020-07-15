@@ -2,3 +2,5 @@
 /**/*.wav
 /**/training_checkpoints
 /**/.vs*
+/**/dataset
+/**/*.csv
