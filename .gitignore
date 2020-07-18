@@ -6,3 +6,9 @@
 /**/*.csv
 /**/*.jpg
 /**/*.png
+/**/*.pt
+/**/*.h5
+/**/*.result
+/**/events.out*
+/**/model_save
+/**/tensorboard_log
