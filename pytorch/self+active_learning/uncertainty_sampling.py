@@ -16,10 +16,11 @@ It contains four Active Learning strategies:
 
 """
 
-import torch 
+import torch, pdb
 import math
 from random import shuffle
-
+from tqdm import tqdm
+import numpy as np
 
 __author__ = "Robert Munro"
 __license__ = "MIT"
@@ -35,6 +36,8 @@ class UncertaintySampling():
     
     def __init__(self, verbose=False):
         self.verbose = verbose
+        self.logprobs = []
+        self.batch_size = 256
     
 
     def least_confidence(self, prob_dist, sorted=False):
@@ -170,28 +173,53 @@ class UncertaintySampling():
             # only apply the model to a limited number of items                                                                            
             # shuffle(unlabeled_data)
             # unlabeled_data = unlabeled_data[:limit]
-
-        with torch.no_grad():
-            v=0
-            for i, item in enumerate(unlabeled_data):
-                data = item[0].to(device)
-                if len(data.shape) == 3:
-                    data = torch.unsqueeze(data, 0)
-                log_probs = model(data)
-                prob_dist = torch.exp(log_probs) # the probability distribution of our prediction
-                
+        
+        if len(self.logprobs) == 0:
+            model.eval()
+            unlabeled_data_loader = torch.utils.data.DataLoader(unlabeled_data, batch_size=self.batch_size, shuffle=False)
+            with torch.no_grad():
+                v=0
+                for i, item in enumerate(unlabeled_data_loader):
+                    data = item[0].to(device)
+                    if len(data.shape) == 3:
+                        data = torch.unsqueeze(data, 0)
+                    outputs = model(data)
+                    for index, output in enumerate(outputs):
+                        if len(output.shape) == 1:
+                            output = torch.unsqueeze(output,0)
+                        self.logprobs.append(output)
+                        prob_dist = torch.exp(self.logprobs[-1]) # the probability distribution of our predictionz
+                    
+                        score = method(prob_dist.data) # get the specific type of uncertainty sampling
+                        
+                        data = (item[0][index], output, score)
+                        # item[3] = method.__name__ # the type of uncertainty sampling used 
+                        # item[4] = score
+                        
+                        samples.append([i*self.batch_size + index,data])
+        else:
+            for i, log_prob in enumerate(self.logprobs):
+                item = unlabeled_data[i]
+                prob_dist = torch.exp(log_prob) # the probability distribution of our prediction
+                    
                 score = method(prob_dist.data[0]) # get the specific type of uncertainty sampling
                 
+                item = (item[0], item[1], score)
                 # item[3] = method.__name__ # the type of uncertainty sampling used 
                 # item[4] = score
                 
                 samples.append([i,item])
-        
-        import pdb; pdb.set_trace()
-        samples.sort(reverse=True, key=lambda x: x[1][4])
-        torch.utils.data.Subset(unlabeled_data, samples.numpy()[0][:])
-        return new_dataset, samples[:number:]        
-        
-    
-
-        
+        samples.sort(reverse=True, key=lambda x: x[1][2])
+        labeled_index = [i[0] for i in samples[:number]]
+        samples = torch.utils.data.Subset(unlabeled_data, labeled_index)
+        unlabeled_index = []
+        for i in range(len(unlabeled_data)):
+            if not (i in labeled_index):
+                unlabeled_index.append(i)
+        new_unlabeled_dataset = torch.utils.data.Subset(unlabeled_data, unlabeled_index)
+        new_prob = []
+        for i, prob in enumerate(self.logprobs):
+            if not (i in labeled_index):
+                new_prob.append(prob)
+        self.logprobs = new_prob
+        return new_unlabeled_dataset, samples

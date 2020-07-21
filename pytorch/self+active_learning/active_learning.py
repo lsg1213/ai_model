@@ -711,7 +711,7 @@ else:
         print("Sampling "+str(number_high_uncertainty_cluster)+" via highest entropy clusters\n")
         sampled_data += adv_samping.get_high_uncertainty_cluster(model, data, uncert_sampling.entropy_based, 
                                                 make_feature_vector, number=number_high_uncertainty_cluster)
-
+    
     # ACTIVE TRANSFER LEARNING FOR UNCERTAINTY
     if number_transfer_learned_uncertainty > 0:
         print("Sampling "+str(number_transfer_learned_uncertainty)+" via deep active transfer learning for uncertainty\n")       
