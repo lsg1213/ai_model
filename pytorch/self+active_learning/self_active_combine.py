@@ -37,6 +37,7 @@ d1_loader = torch.utils.data.DataLoader(d1, batch_size=BATCH_SIZE, shuffle=True,
 d2_loader = torch.utils.data.DataLoader(d2, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)
 
 model = DenseNet201().to(device)
+import pdb; pdb.set_trace()
 classes = ('plane', 'car', 'bird', 'cat',
            'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
     
@@ -54,7 +55,6 @@ for epoch in range(PRETRAIN_EPOCH):
         inputs, labels = data
         inputs = inputs.to(device)
         labels = labels.to(device)
-
         optimizer.zero_grad()
         outputs = model(inputs)
         _, preds = torch.max(outputs, 1)
@@ -113,7 +113,7 @@ for epoch in range(ACTIVE_EPOCH):
 
         # self-training
         d2, sampled_labeled_data = self_training.get_samples(d2, number=SAMPLE_NUM * 3,device=device)
-
+        d1 = torch.utils.data.ConcatDataset([d1, sampled_labeled_data])
         self_training.prob = []
 
         d1_loader = torch.utils.data.DataLoader(d1, batch_size=BATCH_SIZE, shuffle=True, num_workers=2)

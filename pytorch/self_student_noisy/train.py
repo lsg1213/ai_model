@@ -12,6 +12,9 @@ from tensorboardX import SummaryWriter
 import argparse
 from tqdm import tqdm
 from time import time
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
+
 args = argparse.ArgumentParser()
 args.add_argument('--name', type=str, default='model')
 args.add_argument('--pad_size', type=int, default=19)
@@ -34,9 +37,12 @@ config = args.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 tensorboard_path = './tensorboard_log'
+model_save_path = './modelsave'
 if not os.path.exists(tensorboard_path):
     os.mkdir(tensorboard_path)
 writer = SummaryWriter(tensorboard_path)
+if not os.path.exists(model_save_path):
+    os.mkdir(model_save_path)
 
 PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
@@ -54,19 +60,20 @@ EPOCHS = 200
 LR = 0.01
 EARLY_STOP_STEP = 10
 regularization_weight = 0.1
-train_times = 9
+train_times = 3
 val_times = len(val_x) // 10000
 transform = torchvision.transforms.Compose([transforms.ToTensor()])
-trainloader = Dataloader_generator(x, y, transform, config=config,device=device, n_data_per_epoch=20000,divide=train_times)
-valloader = Dataloader_generator(val_x, val_y, transform, config=config, device=device, n_data_per_epoch=len(val_x), divide=val_times)
+trainloader = Dataloader_generator(x, y, transform, config=config,device=device, n_data_per_epoch=60000,divide=train_times, batch_size=BATCH_SIZE)
+valloader = Dataloader_generator(val_x, val_y, transform, config=config, device=device, n_data_per_epoch=len(val_x), divide=val_times, batch_size=BATCH_SIZE)
 
-model = st_attention(device=device).to(device)
-
+model = st_attention(device=device)
+model.to(device)
 criterion = nn.BCELoss()
 optimizer = optim.SGD(model.parameters(),lr=LR,momentum=0.9)
 lr_schedule = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.999)
 max_auc = 0.0
 for epoch in range(EPOCHS):
+    trainloader.shuffle()
     start_time = time()
     running_loss, running_correct, running_auc = 0.0, 0.0, 0.0
     loader_len = 0
@@ -100,8 +107,8 @@ for epoch in range(EPOCHS):
     running_correct /= loader_len * 7 * BATCH_SIZE
     running_auc /= loader_len
     writer.add_scalar('loss/train_loss',running_loss, epoch)
-    writer.add_scalar('auc/train_acc',running_correct, epoch)
-    writer.add_scalar('acc/train_auc',running_auc, epoch)
+    writer.add_scalar('acc/train_acc',running_correct, epoch)
+    writer.add_scalar('auc/train_auc',running_auc, epoch)
     train_loader = None
     torch.cuda.empty_cache()
     model.eval()
@@ -119,10 +126,9 @@ for epoch in range(EPOCHS):
                     pipe_loss = criterion(pipe_score, label)
                     multi_loss = criterion(multi_score, label)
                     post_loss = criterion(post_score, label)
-                    loss =  pipe_loss + multi_loss + regularization_weight * post_loss
+                    loss = pipe_loss + multi_loss + regularization_weight * post_loss
                     # _, preds = torch.max(post_loss, 1)
                     preds = torch.round(post_score).clone()
-                    optimizer.step()
                     val_loss += loss.item()
                     val_correct += torch.sum(preds == label.data)
                     fpr, tpr, thresholds = roc_curve(np.reshape(label.cpu().numpy(),(-1)), np.reshape(preds.cpu().detach().numpy(),(-1)))

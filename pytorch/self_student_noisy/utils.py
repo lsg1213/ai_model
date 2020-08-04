@@ -50,12 +50,18 @@ class Dataloader_generator():
         self.device = device
         self.train = train
         self.divide = divide
+        self.perm = torch.randperm(len(self.data))
+    
+    def shuffle(self):
+        self.perm = torch.randperm(len(self.data))
 
     def next_loader(self, idx):
         x = []
         y = []
-        data = self.data[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]
-        label = self.labels[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]
+
+        data = [self.data[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
+        label = [self.labels[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
+
         while True:
             perm = torch.randperm(len(data))[:self.n_data_per_epoch].to(self.device)
             
