@@ -9,7 +9,6 @@ import traceback
 from tqdm import tqdm
 
 from model.tier import Tier
-from model.tts import TTS
 from model.loss import GMMLoss
 from .utils import get_commit_hash
 from .audio import MelGen
@@ -19,19 +18,13 @@ from .validation import validate
 
 
 def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp, hp_str):
-    if args.tts:
-        model = TTS(
-            hp=hp,
-            freq=hp.audio.n_mels // f_div[hp.model.tier+1] * f_div[args.tier],
-            layers=hp.model.layers[args.tier-1]
-        )
-    else:
-        model = Tier(
-            hp=hp,
-            freq=hp.audio.n_mels // f_div[hp.model.tier+1] * f_div[args.tier],
-            layers=hp.model.layers[args.tier-1],
-            tierN=args.tier
-        )
+
+    model = Tier(
+        hp=hp,
+        freq=hp.audio.n_mels // f_div[hp.model.tier+1] * f_div[args.tier],
+        layers=hp.model.layers[args.tier-1],
+        tierN=args.tier
+    )
     model = nn.DataParallel(model).cuda()
     melgen = MelGen(hp)
     tierutil = TierUtil(hp)
@@ -89,20 +82,11 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
         for epoch in itertools.count(init_epoch + 1):
             loader = tqdm(trainloader, desc='Train data loader', dynamic_ncols=True)
             for input_tuple in loader:
-                if args.tts:
-                    seq, text_lengths, source, target, audio_lengths = input_tuple
-                    mu, std, pi, _ = model(
-                        source.cuda(non_blocking=True),
-                        seq.cuda(non_blocking=True),
-                        text_lengths.cuda(non_blocking=True),
-                        audio_lengths.cuda(non_blocking=True)
-                    )
-                else:
-                    source, target, audio_lengths = input_tuple
-                    mu, std, pi = model(
-                        source.cuda(non_blocking=True),
-                        audio_lengths.cuda(non_blocking=True)
-                    )
+                source, target, audio_lengths = input_tuple
+                mu, std, pi = model(
+                    source.cuda(non_blocking=True),
+                    audio_lengths.cuda(non_blocking=True)
+                )
                 loss = criterion(
                     target.cuda(non_blocking=True),
                     mu, std, pi,

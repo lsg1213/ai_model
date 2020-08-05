@@ -1,7 +1,7 @@
-import os
+import os, pickle
 import glob
 import torch
-import random
+import random, pdb
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
@@ -9,7 +9,6 @@ from torch.utils.data import Dataset, DataLoader
 from utils.utils import read_wav_np, cut_wav, get_length, process_blizzard
 from utils.audio import MelGen
 from utils.tierutil import TierUtil
-from text import text_to_sequence
 
 def create_dataloader(hp, args, train):
     # if args.tts:
@@ -24,51 +23,49 @@ def create_dataloader(hp, args, train):
     #         collate_fn=TextCollate()
     #     )
     # else:
-        dataset = AudioOnlyDataset(hp, args, train)
-        return DataLoader(
-            dataset=dataset,
-            batch_size=args.batch_size,
-            shuffle=train,
-            num_workers=hp.train.num_workers,
-            pin_memory=True,
-            drop_last=True,
-            collate_fn=AudioCollate()
-        )
+    dataset = AudioOnlyDataset(hp, args, train)
+    return DataLoader(
+        dataset=dataset,
+        batch_size=args.batch_size,
+        shuffle=train,
+        num_workers=hp.train.num_workers,
+        pin_memory=True,
+        drop_last=True,
+        collate_fn=AudioCollate()
+    )
+
+def dataSplit(data, args, hp):
+    device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
+    # data shape list(25, np(987136, 12)), accel, 주의: 샘플별로 안 섞이게 하기
+    # 이걸 자르기, (index, window, channel)
+    data_length = int(hp.audio.sr * hp.audio.win_length / 1000000)
+    splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) // data_length)]) for _data in data])
+    
+    return splited_data.cpu()
 
 class AudioOnlyDataset(Dataset):
     def __init__(self, hp, args, train):
         self.hp = hp
         self.args = args
         self.train = train
-        self.data = hp.data.path
+        self.accel_data = dataSplit(pickle.load(open(hp.accel_data.path, 'rb')), args, hp)
+        self.sound_data = dataSplit(pickle.load(open(hp.sound_data.path, 'rb')), args, hp)
         self.melgen = MelGen(hp)
         self.tierutil = TierUtil(hp)
-
         # this will search all files within hp.data.path
-        self.file_list = glob.glob(
-            os.path.join(hp.data.path, '**', hp.data.extension),
-            recursive=True
-        )
 
-        random.seed(123)
-        random.shuffle(self.file_list)
-        if train:
-            self.file_list = self.file_list[:int(0.95 * len(self.file_list))]
-        else:
-            self.file_list = self.file_list[int(0.95 * len(self.file_list)):]
-
-        self.wavlen = int(hp.audio.sr * hp.audio.duration)
+        # self.wavlen = int(hp.audio.sr * hp.audio.duration)
         self.tier = self.args.tier
 
         self.melgen = MelGen(hp)
         self.tierutil = TierUtil(hp)
 
     def __len__(self):
-        return len(self.file_list)
+        return len(self.accel_data)
 
     def __getitem__(self, idx):
         wav = read_wav_np(self.file_list[idx], sample_rate=self.hp.audio.sr)
-        # wav = cut_wav(self.wavlen, wav)
+        pdb.set_trace()
         mel = self.melgen.get_normalized_mel(wav)
         source, target = self.tierutil.cut_divide_tiers(mel, self.tier)
 
