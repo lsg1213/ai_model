@@ -64,8 +64,7 @@ class AudioOnlyDataset(Dataset):
         return len(self.accel_data)
 
     def __getitem__(self, idx):
-        wav = read_wav_np(self.file_list[idx], sample_rate=self.hp.audio.sr)
-        pdb.set_trace()
+        wav = self.accel_data[idx].cpu().numpy()
         mel = self.melgen.get_normalized_mel(wav)
         source, target = self.tierutil.cut_divide_tiers(mel, self.tier)
 

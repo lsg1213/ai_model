@@ -9,6 +9,7 @@ class MelGen():
         self.hp = hp
 
     def get_normalized_mel(self, x):
+        import pdb; pdb.set_trace()
         x = librosa.feature.melspectrogram(
             y=x,
             sr=self.hp.audio.sr,
