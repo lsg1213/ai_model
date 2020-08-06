@@ -6,12 +6,12 @@ model:
 ---
 accel_data:
   name: 'hyundai'
-  path: '/root/datasets/hyundai/stationary_accel_data.pickle'
+  path: '/home/skuser/data/stationary_accel_data.pickle'
   extension: '*.wav'
 ---
 sound_data:
   name: 'hyundai'
-  path: '/root/datasets/hyundai/stationary_sound_data.pickle'
+  path: '/home/skuser/data/stationary_sound_data.pickle'
   extension: '*.wav'
 ---
 audio:

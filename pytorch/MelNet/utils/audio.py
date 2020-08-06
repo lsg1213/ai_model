@@ -2,22 +2,29 @@
 
 import librosa
 import numpy as np
-
+import torchaudio
 
 class MelGen():
     def __init__(self, hp):
         self.hp = hp
 
     def get_normalized_mel(self, x):
-        import pdb; pdb.set_trace()
-        x = librosa.feature.melspectrogram(
-            y=x,
+
+        # x = torchaudio.transforms.MelSpectrogram(
+        #     sample_rate=self.hp.audio.sr,
+        #     n_fft=self.hp.audio.n_fft,
+        #     win_length=self.hp.audio.win_length,
+        #     hop_length=self.hp.audio.hop_length,
+        #     n_mels=self.hp.audio.n_mels
+        # )(x)
+        x = np.concatenate([librosa.feature.melspectrogram(
+            y=x[:,i],
             sr=self.hp.audio.sr,
             n_fft=self.hp.audio.win_length,
             hop_length=self.hp.audio.hop_length,
             win_length=self.hp.audio.win_length,
             n_mels=self.hp.audio.n_mels
-        )
+        ) for i in range(x.shape[-1])],-1)
         x = self.pre_spec(x)
         return x
 

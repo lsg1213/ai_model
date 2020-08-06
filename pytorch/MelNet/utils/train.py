@@ -1,4 +1,4 @@
-import os
+import os, pdb
 import math
 import torch
 import torch.nn as nn
@@ -80,11 +80,15 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
         optimizer.zero_grad()
         loss_sum = 0
         for epoch in itertools.count(init_epoch + 1):
-            loader = tqdm(trainloader, desc='Train data loader', dynamic_ncols=True)
+            # loader = tqdm(trainloader, desc='Train data loader', dynamic_ncols=True)
+            loader = trainloader
             for input_tuple in loader:
+                pdb.set_trace()
                 source, target, audio_lengths = input_tuple
+                sourc = source.type(torch.float)
+                target = target.type(torch.float)
                 mu, std, pi = model(
-                    source.cuda(non_blocking=True),
+                    sourc.cuda(non_blocking=True),
                     audio_lengths.cuda(non_blocking=True)
                 )
                 loss = criterion(
@@ -108,6 +112,7 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
                 if loss > 1e8 or math.isnan(loss):
                     logger.error("Loss exploded to %.04f at step %d!" % (loss, step))
                     raise Exception("Loss exploded")
+                torch.cuda.empty_cache()
 
             save_path = os.path.join(pt_dir, '%s_%s_tier%d_%03d.pt'
             % (args.name, githash, args.tier, epoch))

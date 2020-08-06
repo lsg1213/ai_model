@@ -38,7 +38,8 @@ def dataSplit(data, args, hp):
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     # data shape list(25, np(987136, 12)), accel, 주의: 샘플별로 안 섞이게 하기
     # 이걸 자르기, (index, window, channel)
-    data_length = int(hp.audio.sr * hp.audio.win_length / 1000000)
+    # data_length = int(hp.audio.sr * hp.audio.win_length / 1000000)
+    data_length = int(hp.audio.sr * 1.0)
     splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) // data_length)]) for _data in data])
     
     return splited_data.cpu()
@@ -48,15 +49,14 @@ class AudioOnlyDataset(Dataset):
         self.hp = hp
         self.args = args
         self.train = train
-        self.accel_data = dataSplit(pickle.load(open(hp.accel_data.path, 'rb')), args, hp)
-        self.sound_data = dataSplit(pickle.load(open(hp.sound_data.path, 'rb')), args, hp)
+        self.accel_data = dataSplit(pickle.load(open(hp.accel_data.path, 'rb'))[:2], args, hp)
+        self.sound_data = dataSplit(pickle.load(open(hp.sound_data.path, 'rb'))[:2], args, hp)
         self.melgen = MelGen(hp)
         self.tierutil = TierUtil(hp)
         # this will search all files within hp.data.path
 
         # self.wavlen = int(hp.audio.sr * hp.audio.duration)
         self.tier = self.args.tier
-
         self.melgen = MelGen(hp)
         self.tierutil = TierUtil(hp)
 
@@ -67,7 +67,6 @@ class AudioOnlyDataset(Dataset):
         wav = self.accel_data[idx].cpu().numpy()
         mel = self.melgen.get_normalized_mel(wav)
         source, target = self.tierutil.cut_divide_tiers(mel, self.tier)
-
         return source, target
 
 # class AudioTextDataset(Dataset):
@@ -130,12 +129,12 @@ class AudioOnlyDataset(Dataset):
 #         elif self.hp.data.name == 'Blizzard':
 #             seq = process_blizzard(text)
 
-        wav = read_wav_np(self.dataset[idx][0], sample_rate=self.hp.audio.sr)
-        # wav = cut_wav(self.wavlen, wav)
-        mel = self.melgen.get_normalized_mel(wav)
-        source, target = self.tierutil.cut_divide_tiers(mel, self.tier)
+        # wav = read_wav_np(self.dataset[idx][0], sample_rate=self.hp.audio.sr)
+        # # wav = cut_wav(self.wavlen, wav)
+        # mel = self.melgen.get_normalized_mel(wav)
+        # source, target = self.tierutil.cut_divide_tiers(mel, self.tier)
 
-        return seq, source, target
+        # return seq, source, target
 
 class TextCollate():
     def __init__(self):
