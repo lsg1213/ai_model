@@ -18,7 +18,6 @@ from .validation import validate
 
 
 def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp, hp_str):
-
     model = Tier(
         hp=hp,
         freq=hp.audio.n_mels // f_div[hp.model.tier+1] * f_div[args.tier],
@@ -80,10 +79,9 @@ def train(args, pt_dir, chkpt_path, trainloader, testloader, writer, logger, hp,
         optimizer.zero_grad()
         loss_sum = 0
         for epoch in itertools.count(init_epoch + 1):
-            # loader = tqdm(trainloader, desc='Train data loader', dynamic_ncols=True)
-            loader = trainloader
+            loader = tqdm(trainloader, desc='Train data loader', dynamic_ncols=True)
+            # loader = trainloader
             for input_tuple in loader:
-                pdb.set_trace()
                 source, target, audio_lengths = input_tuple
                 sourc = source.type(torch.float)
                 target = target.type(torch.float)

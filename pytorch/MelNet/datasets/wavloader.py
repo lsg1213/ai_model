@@ -39,7 +39,7 @@ def dataSplit(data, args, hp):
     # data shape list(25, np(987136, 12)), accel, 주의: 샘플별로 안 섞이게 하기
     # 이걸 자르기, (index, window, channel)
     # data_length = int(hp.audio.sr * hp.audio.win_length / 1000000)
-    data_length = int(hp.audio.sr * 1.0)
+    data_length = int(hp.audio.sr * 1.5)
     splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) // data_length)]) for _data in data])
     
     return splited_data.cpu()
@@ -49,8 +49,8 @@ class AudioOnlyDataset(Dataset):
         self.hp = hp
         self.args = args
         self.train = train
-        self.accel_data = dataSplit(pickle.load(open(hp.accel_data.path, 'rb'))[:2], args, hp)
-        self.sound_data = dataSplit(pickle.load(open(hp.sound_data.path, 'rb'))[:2], args, hp)
+        self.accel_data = dataSplit(pickle.load(open(hp.accel_data.path, 'rb')), args, hp)
+        self.sound_data = dataSplit(pickle.load(open(hp.sound_data.path, 'rb')), args, hp)
         self.melgen = MelGen(hp)
         self.tierutil = TierUtil(hp)
         # this will search all files within hp.data.path

@@ -17,10 +17,10 @@ sound_data:
 audio:
   sr: 8192
   duration: 10.0
-  n_mels: 256
-  hop_length: 256
+  n_mels: 180
+  hop_length: 180
   win_length: 500
-  n_fft: 500
+  n_fft: 300
   num_freq: 769
   ref_level_db: 20.0
   min_level_db: -80.0
