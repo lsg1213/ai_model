@@ -12,3 +12,4 @@
 /**/events.out*
 /**/model_save
 /**/tensorboard_log
+/**/__pycache__
