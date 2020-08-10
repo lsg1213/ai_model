@@ -56,7 +56,7 @@ for i in range(len(eval_x)):
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 perm = np.random.permutation(len(x))[:int(len(x) * 0.05)]
 _x, _y, val_x, val_y = [],[],[],[]
-for i in range(x):
+for i in range(len(x)):
     if i in perm:
         val_x.append(x[i])
         val_y.append(y[i])
