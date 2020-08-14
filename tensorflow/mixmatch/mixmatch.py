@@ -76,11 +76,12 @@ def mixmatch(model, x, y, u, T, K, beta):
 
 
 @tf.function
-def semi_loss(labels_x, logits_x, labels_u, logits_u):
+def semi_loss(labels_x, logits_x, labels_u, logits_u, weights):
+    
     loss_xe = tf.nn.softmax_cross_entropy_with_logits(labels=labels_x, logits=logits_x)
     loss_xe = tf.reduce_mean(loss_xe)
     loss_l2u = tf.square(labels_u - tf.nn.softmax(logits_u))
-    loss_l2u = tf.reduce_mean(loss_l2u)
+    loss_l2u = tf.reduce_mean(loss_l2u * tf.cast(tf.transpose(weights, [1,0]), tf.float32))
     return loss_xe, loss_l2u
 
 

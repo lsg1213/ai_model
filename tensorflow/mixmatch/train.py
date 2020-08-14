@@ -2,10 +2,10 @@ import argparse, os, tqdm, yaml, pdb
 import tensorflow as tf
 from tensorboardX import SummaryWriter
 import numpy as np
-
+from sklearn.metrics import confusion_matrix
 from mixmatch import mixmatch, semi_loss, linear_rampup, interleave, weight_decay, ema
 from model import WideResNet
-from preprocess import fetch_dataset
+from preprocess import fetch_dataset, _list_to_tf_dataset
 
 def get_args():
     parser = argparse.ArgumentParser('parameters')
@@ -42,14 +42,21 @@ def get_args():
 def main(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
     start_epoch = 0
-    log_path = f'.logs/{args.dataset}@{args.labelled_examples}'
+    log_path = f'.logs/{args.dataset}@{args.labelled_examples}@idea'
     ckpt_dir = f'{log_path}/checkpoints'
 
     # tfds version 2.1.0
     datasetX, datasetU, val_dataset, test_dataset, confusion_dataset, num_classes = fetch_dataset(args, log_path)
+    batching = lambda dataset: dataset.batch(batch_size=len(confusion_dataset))
+    confusion_batch = next(iter(batching(confusion_dataset)))
     
     model = WideResNet(num_classes, depth=28, width=2)
     model.build(input_shape=(None, 32, 32, 3))
+
+    labeler = WideResNet(num_classes, depth=28, width=2)
+    labeler.build(input_shape=(None, 32, 32, 3))
+    labeler.set_weights(model.get_weights())
+
     optimizer = tf.keras.optimizers.Adam(lr=args.learning_rate)
     model_ckpt = tf.train.Checkpoint(step=tf.Variable(0), optimizer=optimizer, net=model)
     manager = tf.train.CheckpointManager(model_ckpt, f'{ckpt_dir}/model', max_to_keep=3)
@@ -78,11 +85,23 @@ def main(args):
     # assigning args used in functions wrapped with tf.function to tf.constant/tf.Variable to avoid memory leaks
     args.T = tf.constant(args.T)
     args.beta = tf.Variable(0., shape=())
-    for epoch in range(start_epoch, args.epoch):
-        xe_loss, l2u_loss, total_loss, accuracy = train(datasetX, datasetU, confusion_dataset, model, ema_model, optimizer, epoch, args)
+    best_acc = 0.
+    for epoch in range(start_epoch, args.epochs):
+        # 아이디어 추가
+        data = confusion_batch['image']
+        label = confusion_batch['label']
+
+        GAMMA = np.diag(confusion_matrix(
+            np.argmax(label.numpy(), -1), # gamma_val_y,
+            np.argmax(labeler(data, training=False).numpy(), -1),
+            normalize='pred')
+            )
+ 
+        xe_loss, l2u_loss, total_loss, accuracy = train(datasetX, datasetU, model, ema_model, labeler, GAMMA, optimizer, epoch, args, best_acc)
         val_xe_loss, val_accuracy = validate(val_dataset, ema_model, epoch, args, split='Validation')
         test_xe_loss, test_accuracy = validate(test_dataset, ema_model, epoch, args, split='Test')
-
+        if best_acc < val_accuracy:
+            best_acc = val_accuracy
         if (epoch - start_epoch) % 16 == 0:
             model_save_path = manager.save(checkpoint_number=int(model_ckpt.step))
             ema_save_path = ema_manager.save(checkpoint_number=int(ema_ckpt.step))
@@ -111,7 +130,14 @@ def main(args):
         for writer in [train_writer, val_writer, test_writer]:
             writer.flush()
 
-def train(datasetX, datasetU, confusion_dataset, model, ema_model, optimizer, epoch, args):
+# @tf.function
+# def predict(model, x, batch_size=32):
+#     y = []
+#     for i in range((len(x)-1)//batch_size + 1):
+#         y.append(model(x[i*batch_size:(i+1)*batch_size], training=False))
+#     return tf.concat(y, axis=0)
+
+def train(datasetX, datasetU, model, ema_model, labeler, GAMMA, optimizer, epoch, args, best_acc):
     xe_loss_avg = tf.keras.metrics.Mean()
     l2u_loss_avg = tf.keras.metrics.Mean()
     total_loss_avg = tf.keras.metrics.Mean()
@@ -121,6 +147,38 @@ def train(datasetX, datasetU, confusion_dataset, model, ema_model, optimizer, ep
 
     iteratorX = iter(shuffle_and_batch(datasetX))
     iteratorU = iter(shuffle_and_batch(datasetU))
+    # unlabeled = tf.convert_to_tensor([data['image'] for data in datasetU])
+
+    # u_hat = labeler.predict(unlabeled, batch_size=args.batch_size) # 원래 logit 뱉음
+
+    # tau = tf.convert_to_tensor(max(0.2 - best_acc/4, 1e-4))
+
+    # u_hat = tf.math.exp(u_hat / tau)
+    # u_hat = u_hat / tf.reduce_sum(u_hat, -1, True)
+    # u_hat_label = tf.argmax(u_hat,-1)
+
+    # label_counts = tf.reduce_sum(np.eye(10)[u_hat_label], 0, True)
+    # select = u_hat_label * 0
+    # size = np.percentile(label_counts, 25)
+    # if size > 0:
+    #     for i in range(u_hat.shape[-1]):
+    #         if label_counts[i] <= 0:
+    #             continue
+    #         ratio = size / (label_counts[i] + tf.convert_to_tensor(1e-8))
+    #         ratio = min(max(0, ratio), 1)
+    #         mask = u_hat[:, i] >= np.percentile(u_hat[:, i][u_hat_label == i])
+    #         select += (u_hat_label == i) * mask
+    # select = tf.cast(select, tf.bool)
+    # pseudo_dataset = unlabeled[select]
+    # u_hat = u_hat[select]
+    # if len(u) > 0:
+    #     indices = np.random.permutation(len(pseudo_dataset))
+    #     pseudo_dataset = pseudo_dataset[indices]
+    #     u_hat = u_hat[indices]
+
+    # pseudo_dataset = _list_to_tf_dataset([{'image': pseudo_dataset[indice],
+    #                     'label': u_hat[indice] for indice in range(len(pseudo_dataset))])
+    # iteratorP = iter(shuffle_and_batch(pseudo_dataset))
 
     progress_bar = tqdm.tqdm(range(args.val_iteration), unit='batch')
     for batch_num in progress_bar:
@@ -146,12 +204,11 @@ def train(datasetX, datasetU, confusion_dataset, model, ema_model, optimizer, ep
             logits = interleave(logits, args.batch_size)
             logits_x = logits[0]
             logits_u = tf.concat(logits[1:], axis=0)
-
+            weights = tf.convert_to_tensor([np.dot(logits_u, GAMMA)])
             # compute loss
-            xe_loss, l2u_loss = semi_loss(XUy[:args.batch_size], logits_x, XUy[args.batch_size:], logits_u)
+            xe_loss, l2u_loss = semi_loss(XUy[:args.batch_size], logits_x, XUy[args.batch_size:], logits_u, tf.cast(weights, tf.double))
             total_loss = xe_loss + lambda_u * l2u_loss
 
-        # loss 수정 위치
         
         # compute gradients and run optimizer step
         grads = tape.gradient(total_loss, model.trainable_variables)

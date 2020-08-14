@@ -69,7 +69,6 @@ def split_dataset(dataset, num_labelled, num_validations, num_confusion, num_cla
             confusion.append(example)
         else:
             _labelled.append(example)
-    import pdb; pdb.set_trace()
     confusion = _list_to_tf_dataset(confusion)
     labelled = _list_to_tf_dataset(_labelled)
     unlabelled = _list_to_tf_dataset(unlabelled)
