@@ -30,28 +30,47 @@ class makeDataset(Dataset):
     def __getitem__(self, idx):
         return self.accel[idx], self.sound[idx]
 
-def Shift(y_buffer, k_idx, value):
-    y_buffer[1:, k_idx] = y_buffer[:-1, k_idx]
-    y_buffer[0, k_idx] = value
-    return y_buffer
-Ls = 128
-K = M = 8
-def Conv_S(signal, S_data, device='cpu'):
-    #Process S filter to waveform data
-    #the shape of signal should be (batch, time, 8)
-    batch_size = signal.size(0)
-    time_len = signal.size(1)
-    y_pred = torch.zeros((batch_size, time_len, M), device=device)
-    S_filter = S_data.type(torch.float) #(Ls, K, M)
-    Y_buffer = torch.zeros((Ls, K), device=device)
-    for batch in range(batch_size):
-        for n in range(time_len):
-            for k in range(K):
-                for m in range(M):
-                    y_pred[batch, n, m] += torch.dot(Y_buffer[:, k], S_filter[:, k, m])
-                    Y_buffer = Shift(Y_buffer, k, signal[batch, n, k])
+# def Shift(y_buffer, k_idx, value):
+#     y_buffer[1:, k_idx] = y_buffer[:-1, k_idx]
+#     y_buffer[0, k_idx] = value
+#     return y_buffer
+# Ls = 128
+# K = M = 8
+# def Conv_S(signal, S_data, device='cpu'):
+#     #Process S filter to waveform data
+#     #the shape of signal should be (batch, time, 8)
+#     batch_size = signal.size(0)
+#     time_len = signal.size(1)
+#     y_pred = torch.zeros((batch_size, time_len, M), device=device)
+#     S_filter = S_data.type(torch.float) #(Ls, K, M)
+#     Y_buffer = torch.zeros((Ls, K), device=device)
+#     for batch in range(batch_size):
+#         for n in range(time_len):
+#             for k in range(K):
+#                 for m in range(M):
+#                     y_pred[batch, n, m] += torch.dot(Y_buffer[:, k], S_filter[:, k, m])
+#                     Y_buffer = Shift(Y_buffer, k, signal[batch, n, k])
         
-    return y_pred
+#     return y_pred
+
+def Conv_S(y, s_filter, device='cpu'):
+    # defined as a function
+    ## New Conv S => Validated
+    Ls, K, M = s_filter.shape
+    Tn = y.shape[0]
+    y_buffer = torch.zeros((Ls, K), device=device)
+    y_p = torch.zeros(y.size(), device=device)
+    #e = torch.zeros(y.size())
+
+    for n in range(Tn):
+        for k in range(K):
+            for m in range(M):
+                y_p[n,m] += torch.dot(y_buffer[:, k], s_filter[:, k, m])
+
+        #e[n, :] = d[n, :] - y_p[n, :]
+        y_buffer[1:, :] = y_buffer[:-1, :].clone().to(device)
+        y_buffer[0, :] = y[n , :]
+    return y_p
 
 def padding(signal, device):
     _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2))).to(device)
