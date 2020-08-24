@@ -36,13 +36,14 @@ args.add_argument('--dataset', type=str, default='noisex')
 config = args.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-tensorboard_path = './tensorboard_log'
-model_save_path = './modelsave'
+name = 'paper_spec_norm'
+tensorboard_path = './tensorboard_log/'+name
+model_save_path = './model_save/'+name
 if not os.path.exists(tensorboard_path):
-    os.mkdir(tensorboard_path)
+    os.makedirs(tensorboard_path)
 writer = SummaryWriter(tensorboard_path)
 if not os.path.exists(model_save_path):
-    os.mkdir(model_save_path)
+    os.makedirs(model_save_path)
 
 PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
@@ -71,11 +72,11 @@ EPOCHS = 200
 LR = 0.01
 EARLY_STOP_STEP = 10
 regularization_weight = 0.1
-train_times = 6
+train_times = 18
 val_times = 1
 eval_times = len(eval_x) // 10000
 transform = torchvision.transforms.Compose([transforms.ToTensor()])
-trainloader = Dataloader_generator(x, y, transform, config=config,device=device, n_data_per_epoch=30000,divide=train_times, batch_size=BATCH_SIZE)
+trainloader = Dataloader_generator(x, y, transform, config=config,device=device, n_data_per_epoch=10000,divide=train_times, batch_size=BATCH_SIZE)
 valloader = Dataloader_generator(val_x, val_y, transform, config=config, device=device, n_data_per_epoch=len(val_x), divide=val_times, batch_size=BATCH_SIZE)
 evalloader = Dataloader_generator(eval_x, eval_y, transform, config=config, device=device, n_data_per_epoch=len(eval_x), divide=eval_times, batch_size=BATCH_SIZE)
 
@@ -187,17 +188,17 @@ for epoch in range(EPOCHS):
         writer.add_scalar('acc/eval_acc',eval_correct, epoch)
         writer.add_scalar('auc/eval_auc',eval_auc, epoch)
 
-    print(f'epoch: {epoch} loss: {running_loss:0.4}, acc: {running_correct:0.4}, auc: {running_auc:0.4}, eval_loss: {eval_loss:0.4}, eval_acc: {eval_correct:0.4}, eval_auc: {eval_auc:0.4}, time: {time() - start_time:0.4}')
+    print(f'epoch: {epoch} loss: {running_loss:0.4}, acc: {running_correct:0.4}, auc: {running_auc:0.4}, val_loss: {val_loss:0.4}, val_acc: {val_correct}, val_auc: {val_auc}, eval_loss: {eval_loss:0.4}, eval_acc: {eval_correct:0.4}, eval_auc: {eval_auc:0.4}, time: {time() - start_time:0.4}')
     torch.save({
         'model':model.state_dict(),
         'optimizer':optimizer.state_dict(),
         'epoch':epoch
-        }, f'./model_save/{epoch}_auc{eval_auc:0.4}.pt')
+        }, model_save_path + f'/{epoch}_auc{eval_auc:0.4}.pt')
     lr_schedule.step()
     torch.cuda.empty_cache()
     if val_loss < min_loss:
         epochs_no_improve = 0
-        min_auc = val_loss
+        # min_loss = val_loss
     else:
         epochs_no_improve += 1
     if epoch > 5 and epochs_no_improve == EARLY_STOP_STEP:

@@ -149,7 +149,11 @@ def preprocess_spec(config, feature='mel', skip=1):
         if feature in ['spec', 'mel']:
             spec = torch.log(spec + EPSILON)
         if feature == 'mel':
-            spec = (spec - 4.5252) / 2.6146 # normalize
+            # spec = (spec - 4.5252) / 2.6146 # normalize
+            
+            spec = spec / (torch.norm(spec) + 1e-7)
+            spec -= torch.min(spec)
+            spec /= torch.max(spec) + 1e-7
         spec = spec.transpose(1, 0) # to (time, freq)
         windows = sequence_to_windows(spec, 
                                       config.pad_size, config.step_size,
