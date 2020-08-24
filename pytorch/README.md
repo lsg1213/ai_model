@@ -10,3 +10,6 @@
 
 # melnet
 ### all melnet code is cloned from https://github.com/Deepest-Project/MelNet
+
+# efficientnet
+### all efficient related code is cloned from https://github.com/lukemelas/EfficientNet-PyTorch.git
