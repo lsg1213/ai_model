@@ -4,7 +4,7 @@ import os
 datalength = [40, 80]
 before = [0, 40, 80, 120]
 opt = ['adam','sgd']
-mode = ['ts_S', 'sj_S', 'no_S']
+mode = ['sj_S', 'no_S']
 for m in mode:
     for d in datalength:
         for b in before:

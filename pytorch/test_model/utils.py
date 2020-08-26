@@ -72,12 +72,12 @@ def Conv_S(y, s_filter, device='cpu'):
     return y_p
 
 def padding(signal, Ls, device):
-    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=device)
+    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
     
 def conv_with_S(signal, S_data, device=torch.device('cpu')):
     # S_data(Ls, K, M)
-    S_data = torch.tensor(S_data.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device,dtype=torch.float)
+    S_data = torch.tensor(S_data.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device,dtype=signal.dtype)
     Ls = S_data.size(1)
     K = S_data.size(-1)
     signal = padding(signal, Ls, device)

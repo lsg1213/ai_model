@@ -5,19 +5,21 @@ import torch.nn as nn
 from tqdm import tqdm
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
-from model import Model
+import models
 from utils import dataSplit, makeDataset, Conv_S, conv_with_S
 from torchsummary import summary
 args = argparse.ArgumentParser()
-args.add_argument('--lr', type=float, default=0.01)
+args.add_argument('--lr', type=float, default=0.001)
 args.add_argument('--gpus', type=str, default='0')
 args.add_argument('--epoch', type=int, default=200)
-args.add_argument('--decay', type=float, default=0.99)
+args.add_argument('--decay', type=float, default=1/np.sqrt(2))
 args.add_argument('--batch', type=int, default=64)
 args.add_argument('--len', type=int, default=40)
 args.add_argument('--b', type=int, default=40)
 args.add_argument('--opt', type=str, default='adam')
-args.add_argument('--mode', type=str, default='no_S')
+args.add_argument('--mode', type=str, default='sj_S')
+args.add_argument('--model', type=str, default='ConvAutoencoder')
+
 
 
 def main(config):
@@ -34,9 +36,9 @@ def main(config):
     ls = 128
 
     ABSpath = '/home/skuser'
-    tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log')
     name = config.mode + f'_{config.b}_{data_length}_{config.opt}_{config.lr}'
-    modelsave_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/modelsave/' + name)
+    tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
+    modelsave_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/model_save/' + name)
     if not os.path.exists(modelsave_path):
         os.mkdir(modelsave_path)
     if not os.path.exists(tensorboard_path):
@@ -47,10 +49,14 @@ def main(config):
     accel_raw_data = pickle.load(open(os.path.join(data_path,'stationary_accel_data.pickle'),'rb'))
     sound_raw_data = pickle.load(open(os.path.join(data_path,'stationary_sound_data.pickle'),'rb'))
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
+    transfer_f = torch.from_numpy(transfer_f).to(device)
+    transfer_f.requires_grad = False
 
     accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length)
     sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length)
-    model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
+    # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
+    model = getattr(models, config.model)(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
+    print(config.model)
     dataset = makeDataset(accel_data, sound_data)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
@@ -63,6 +69,7 @@ def main(config):
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
+    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
 
     min_loss = 10000000000.0
     earlystep = 0
@@ -77,7 +84,7 @@ def main(config):
                 accel = accel.to(device)
                 sound = sound.to(device)
                 optimizer.zero_grad()
-                y = model(accel)
+                y = model(accel.type(torch.float))
                 if config.mode == 'ts_S':
                     y_p = Conv_S(y, transfer_f, device)
                 elif config.mode == 'sj_S':
@@ -118,7 +125,7 @@ def main(config):
                     pbar.set_postfix(epoch=f'{epoch}', val_loss=f'{np.mean(val_loss):0.4}')
                 val_loss = np.mean(val_loss)
         writer.add_scalar('val/val_loss', val_loss, epoch)
-
+        lr_schedule.step()
         torch.save({
             'model': model.state_dict(),
             'epoch': epoch,
@@ -128,9 +135,9 @@ def main(config):
         if np.isnan(train_loss) or np.isnan(val_loss):
             print('loss is divergence!')
             break
-        if min_loss < val_loss:
+        if min_loss > val_loss:
             earlystep = 0
-            min_loss = 0
+            min_loss = val_loss
         else:
             earlystep += 1
             if earlystep == 15:
