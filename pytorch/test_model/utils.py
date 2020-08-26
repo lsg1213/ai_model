@@ -66,22 +66,23 @@ def Conv_S(y, s_filter, device='cpu'):
         for k in range(K):
             for m in range(M):
                 y_p[n,m] += torch.dot(y_buffer[:, k], s_filter[:, k, m])
-
         #e[n, :] = d[n, :] - y_p[n, :]
         y_buffer[1:, :] = y_buffer[:-1, :].clone().to(device)
         y_buffer[0, :] = y[n , :]
     return y_p
 
-def padding(signal, device):
-    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2))).to(device)
+def padding(signal, Ls, device):
+    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=device)
     return torch.cat([_pad, signal],1)
     
 def conv_with_S(signal, S_data, device=torch.device('cpu')):
-    signal = padding(signal, device)
+    # S_data(Ls, K, M)
+    S_data = torch.tensor(S_data.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device,dtype=torch.float)
+    Ls = S_data.size(1)
+    K = S_data.size(-1)
+    signal = padding(signal, Ls, device)
     if signal.size(1) != K:
         signal = signal.transpose(1,2)
-    if S_data.size(0) == Ls:
-        S_data = S_data.transpose(0,2)
-    out = F.conv1d(signal, S_data)
+    out = F.conv1d(signal, S_data.permute([2,0,1]))
 
-    return out.transpose(1,2)
+    return out.transpose(1,2)[:,:-1,:]
