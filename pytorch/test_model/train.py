@@ -21,7 +21,6 @@ args.add_argument('--mode', type=str, default='sj_S')
 args.add_argument('--model', type=str, default='ConvAutoencoder')
 
 
-
 def main(config):
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
@@ -36,13 +35,13 @@ def main(config):
     ls = 128
 
     ABSpath = '/home/skuser'
-    name = config.mode + f'_{config.b}_{data_length}_{config.opt}_{config.lr}'
+    name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay}'
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
     modelsave_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/model_save/' + name)
     if not os.path.exists(modelsave_path):
-        os.mkdir(modelsave_path)
+        os.makedirs(modelsave_path)
     if not os.path.exists(tensorboard_path):
-        os.mkdir(tensorboard_path)
+        os.makedirs(tensorboard_path)
     writer = SummaryWriter(tensorboard_path)
 
     data_path = os.path.join(ABSpath,'data')
@@ -81,10 +80,10 @@ def main(config):
         with tqdm(train_loader) as pbar:
             for index, (accel, sound) in enumerate(pbar):
                 accel = accel.transpose(1,2)
-                accel = accel.to(device)
-                sound = sound.to(device)
+                accel = accel.to(device).type(torch.float64)
+                sound = sound.to(device).type(torch.float64)
                 optimizer.zero_grad()
-                y = model(accel.type(torch.float))
+                y = model(accel)
                 if config.mode == 'ts_S':
                     y_p = Conv_S(y, transfer_f, device)
                 elif config.mode == 'sj_S':
@@ -92,7 +91,7 @@ def main(config):
                 else:
                     y_p = y
 
-                loss = criterion(y_p, sound)
+                loss = criterion(y_p.type(sound.dtype), sound)
                 loss.backward()
                 optimizer.step()
                 # _, preds = torch.max(y_p, 1)
