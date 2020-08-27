@@ -3,7 +3,7 @@ from glob import glob
 import numpy as np
 from random import choice
 from glob import glob
-
+import pdb
 # PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 # x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
 # y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))
@@ -55,18 +55,17 @@ class Dataloader_generator():
     def shuffle(self):
         self.perm = torch.randperm(len(self.data))
 
-    def next_loader(self, idx):
-        x = []
-        y = []
-
+    def next_loader(self, idx):        
         data = [self.data[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
         label = [self.labels[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
 
         while True:
-            perm = torch.randperm(len(data))[:self.n_data_per_epoch].to(self.device)
+            # perm = torch.randperm(len(data)).to(self.device)
             
-            data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
-            labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
+            # data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
+            # labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
+            data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
+            labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
 
             if len(data) != len(labels):
                 raise ValueError(f'data {data.shape}, labels {labels.shape}')
@@ -77,29 +76,10 @@ class Dataloader_generator():
                                                     shuffle=True if self.train else False,
                                                     drop_last=True
                                                 )
-            x = []
-            y = []
-            perm = None
             data = None
             labels = None
             torch.cuda.empty_cache()
             yield data_loader
-            # for index in perm:
-            #     x.append(data[index])
-            #     y.append(labels[index])
-            #     if len(x) >= self.n_data_per_epoch:
-            #         dataset = Dataset(x,y, transform=self.transform)
-            #         data_loader = torch.utils.data.DataLoader(dataset=dataset,
-            #                                                 batch_size = self.batch_size,
-            #                                                 shuffle=True,
-            #                                                 drop_last=True
-            #                                             )
-            #         x = []
-            #         y = []
-            #         perm = None
-            #         data = None
-            #         labels = None
-            #         yield data_loader
                 
 
 
@@ -151,9 +131,9 @@ def preprocess_spec(config, feature='mel', skip=1):
         if feature == 'mel':
             # spec = (spec - 4.5252) / 2.6146 # normalize
             
-            spec = spec / (torch.norm(spec) + 1e-7)
+            # spec = spec / (torch.norm(spec) + 1e-7)
             spec -= torch.min(spec)
-            spec /= torch.max(spec) + 1e-7
+            spec /= torch.max(spec) + 1e-6
         spec = spec.transpose(1, 0) # to (time, freq)
         windows = sequence_to_windows(spec, 
                                       config.pad_size, config.step_size,
