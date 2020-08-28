@@ -3,16 +3,18 @@ from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import torch.nn.functional as F
 
-def dataSplit(data, takebeforetime, data_length=40):
+def dataSplit(data, takebeforetime, data_length=40, expand=True):
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     # data shape list(25, np(987136, 12)), accel, 주의: 샘플별로 안 섞이게 하기
     # 이걸 자르기, (index, window, channel)
     # data_length = int(hp.audio.sr * hp.audio.win_length / 1000000)
     # import pdb; pdb.set_trace()
-    if takebeforetime != 0:
-        data = [np.concatenate([np.zeros((takebeforetime, i.shape[1]),dtype='float'), i]) for i in data]
-    splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx-takebeforetime:idx+data_length][np.newaxis, ...]) for idx in range(takebeforetime, len(_data) // data_length )]) for _data in data])
-    
+    if expand:
+        if takebeforetime != 0:
+            data = [np.concatenate([np.zeros((takebeforetime, i.shape[1]),dtype='float'), i]) for i in data]
+        splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx-takebeforetime:idx+data_length][np.newaxis, ...]) for idx in range(takebeforetime, len(_data) // data_length )]) for _data in data])
+    else:
+        splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) // data_length)]) for _data in data])
     return splited_data.cpu()
 
 class makeDataset(Dataset):

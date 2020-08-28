@@ -8,6 +8,7 @@ from tensorboardX import SummaryWriter
 import models
 from utils import dataSplit, makeDataset, Conv_S, conv_with_S
 from torchsummary import summary
+from glob import glob
 args = argparse.ArgumentParser()
 args.add_argument('--lr', type=float, default=0.001)
 args.add_argument('--gpus', type=str, default='0')
@@ -19,6 +20,7 @@ args.add_argument('--b', type=int, default=40)
 args.add_argument('--opt', type=str, default='adam')
 args.add_argument('--mode', type=str, default='sj_S')
 args.add_argument('--model', type=str, default='ConvAutoencoder')
+args.add_argument('--resume', action='store_true')
 
 
 def main(config):
@@ -35,7 +37,7 @@ def main(config):
     ls = 128
 
     ABSpath = '/home/skuser'
-    name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay}'
+    name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
     modelsave_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/model_save/' + name)
     if not os.path.exists(modelsave_path):
@@ -51,8 +53,8 @@ def main(config):
     transfer_f = torch.from_numpy(transfer_f).to(device)
     transfer_f.requires_grad = False
 
-    accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length)
-    sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length)
+    accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length, expand=True)
+    sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length, expand=False)
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
     model = getattr(models, config.model)(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
     print(config.model)
@@ -68,12 +70,19 @@ def main(config):
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
-    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
-
+    # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
+    startepoch = 0
+    if config.resume:
+        resume = torch.load(sorted(glob(os.path.join(modelsave_path, name)), key=lambda x: int(x.split('_')[0]))[0])
+        optimizer.load_state_dict(resume['optimizer'])
+        model.load_state_dict(resume['model'])
+        startepoch = resume['epoch']
+        
     min_loss = 10000000000.0
     earlystep = 0
     model.to(device)
-    for epoch in range(EPOCH):
+    for epoch in range(startepoch,EPOCH):
         train_loss = []
         model.train()
         
@@ -124,7 +133,7 @@ def main(config):
                     pbar.set_postfix(epoch=f'{epoch}', val_loss=f'{np.mean(val_loss):0.4}')
                 val_loss = np.mean(val_loss)
         writer.add_scalar('val/val_loss', val_loss, epoch)
-        lr_schedule.step()
+        lr_schedule.step(val_loss)
         torch.save({
             'model': model.state_dict(),
             'epoch': epoch,
