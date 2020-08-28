@@ -19,7 +19,7 @@ args.add_argument('--len', type=int, default=40)
 args.add_argument('--b', type=int, default=40)
 args.add_argument('--opt', type=str, default='adam')
 args.add_argument('--mode', type=str, default='sj_S')
-args.add_argument('--model', type=str, default='ConvAutoencoder')
+args.add_argument('--model', type=str, default='CombineAutoencoder')
 args.add_argument('--resume', action='store_true')
 
 
@@ -74,7 +74,7 @@ def main(config):
     lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
     if config.resume:
-        resume = torch.load(sorted(glob(os.path.join(modelsave_path, name)), key=lambda x: int(x.split('_')[0]))[0])
+        resume = torch.load(sorted(glob(modelsave_path+'/*'), key=lambda x: float(x.split('/')[-1].split('_')[-1]), reverse=True)[0])
         optimizer.load_state_dict(resume['optimizer'])
         model.load_state_dict(resume['model'])
         startepoch = resume['epoch']
