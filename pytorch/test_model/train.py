@@ -63,9 +63,9 @@ def main(config):
     # accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length, expand=True)
     # sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length, expand=False)
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
-    dataset = makeDataset(accel_raw_data, sound_raw_data, config.b, config.data_length)
+    dataset = makeDataset(accel_raw_data, sound_raw_data, config.b, data_length)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
-    model = getattr(models, config.model)(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
+    model = getattr(models, config.model)((data_length + config.b) * 12, 40 * 8).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
@@ -80,7 +80,7 @@ def main(config):
     # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
     lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
-    if config.resume:
+    if config.resume and len(glob(modelsave_path+'/*')) != 0:
         resume = torch.load(sorted(glob(modelsave_path+'/*'), key=lambda x: float(x.split('/')[-1].split('_')[-1]))[0])
         optimizer.load_state_dict(resume['optimizer'])
         model.load_state_dict(resume['model'])
@@ -95,7 +95,6 @@ def main(config):
         
         with tqdm(train_loader) as pbar:
             for index, (accel, sound) in enumerate(pbar):
-                pdb.set_trace()
                 accel = accel.transpose(1,2)
                 accel = accel.to(device).type(torch.float64)
                 sound = sound.to(device).type(torch.float64)
