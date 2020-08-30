@@ -18,43 +18,49 @@ def dataSplit(data, takebeforetime, data_length=40, expand=True):
         splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) - data_length)]) for _data in data])
     return splited_data.cpu()
 
-class makeDataset(Dataset):
-    def __init__(self, accel, sound, train=True):
-        self.accel = accel
-        self.sound = sound
-        if train:
-            perm = torch.randperm(len(self.accel))
-            self.accel = self.accel[perm]
-            self.sound = self.sound[perm]
+def data_spread(data,data_length):
+    res = []
+    for i in data:
+        _data = i[:(len(i) // data_length) * data_length]
+        for j in _data:
+            res.append(j)
+    return torch.reshape(torch.tensor(res), (-1, data_length, 12))
     
+class makeDataset(Dataset):
+    def __init__(self, accel, sound, takebeforetime=40, data_length=40):
+        if takebeforetime % data_length != 0:
+            raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
+        self.accel = data_spread(accel, data_length)
+        self.sound = data_spread(sound, data_length)
+        self.takebeforetime = takebeforetime
+        self.data_length = data_length
+        self.perm = torch.randperm(len(self.accel))
+        if len(accel) < (takebeforetime // data_length) + 1:
+            raise ValueError(f'Dataset is too small, {len(accel)}')
+    
+    def shuffle(self):
+        self.perm = torch.randperm(len(self.accel))
+
     def __len__(self):
         return len(self.accel)
 
     def __getitem__(self, idx):
-        return self.accel[idx], self.sound[idx]
+        if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
+            return torch.cat([
+                torch.zeros(((self.takebeforetime // self.data_length) - self.perm[idx]) + self.accel.shape[1:],dtype=self.accel.dtype,device=self.accel.device),
+                self.accel[: self.perm[idx] + 1]
+            ]), self.sound[: self.perm[idx] + 1]
+        elif self.perm[idx] + 1 >= len(self.accel):
+            return torch.cat([
+                self.accel[self.perm[idx] - (self.takebeforetime // self.data_length):],
+                torch.zeros((1,) + self.accel.shape[1:], dtype=self.accel.dtype, device=self.accel.device)
+            ]), torch.cat([
+                self.sound[self.perm[idx]:],
+                torch.zeros((1,) + self.sound.shape[1:], dtype=self.sound.dtype, device=self.sound.device)
+            ])
 
-# def Shift(y_buffer, k_idx, value):
-#     y_buffer[1:, k_idx] = y_buffer[:-1, k_idx]
-#     y_buffer[0, k_idx] = value
-#     return y_buffer
-# Ls = 128
-# K = M = 8
-# def Conv_S(signal, S_data, device='cpu'):
-#     #Process S filter to waveform data
-#     #the shape of signal should be (batch, time, 8)
-#     batch_size = signal.size(0)
-#     time_len = signal.size(1)
-#     y_pred = torch.zeros((batch_size, time_len, M), device=device)
-#     S_filter = S_data.type(torch.float) #(Ls, K, M)
-#     Y_buffer = torch.zeros((Ls, K), device=device)
-#     for batch in range(batch_size):
-#         for n in range(time_len):
-#             for k in range(K):
-#                 for m in range(M):
-#                     y_pred[batch, n, m] += torch.dot(Y_buffer[:, k], S_filter[:, k, m])
-#                     Y_buffer = Shift(Y_buffer, k, signal[batch, n, k])
-        
-#     return y_pred
+        return self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], self.sound[self.perm[idx]: self.perm[idx] + 1]
+
 
 def Conv_S(y, s_filter, device='cpu'):
     # defined as a function
