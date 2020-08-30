@@ -12,9 +12,10 @@ def dataSplit(data, takebeforetime, data_length=40, expand=True):
     if expand:
         if takebeforetime != 0:
             data = [np.concatenate([np.zeros((takebeforetime, i.shape[1]),dtype='float'), i]) for i in data]
-        splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx-takebeforetime:idx+data_length][np.newaxis, ...]) for idx in range(takebeforetime, len(_data) // data_length )]) for _data in data])
+        splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx-takebeforetime:idx+data_length][np.newaxis, ...]) for idx in range(takebeforetime, len(_data) - data_length)]) for _data in data])
     else:
-        splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) // data_length)]) for _data in data])
+        # splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) - data_length]) for _data in data])
+        splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) - data_length)]) for _data in data])
     return splited_data.cpu()
 
 class makeDataset(Dataset):

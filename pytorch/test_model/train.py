@@ -32,7 +32,7 @@ def main(config):
     BATCH_SIZE = config.batch
     learning_rate = config.lr
     EARLY_STOP_STEP = 15
-    EPOCH = 200
+    EPOCH = 2000
     K, m = 8, 8
     ls = 128
 
@@ -74,7 +74,7 @@ def main(config):
     lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
     if config.resume:
-        resume = torch.load(sorted(glob(modelsave_path+'/*'), key=lambda x: float(x.split('/')[-1].split('_')[-1]), reverse=True)[0])
+        resume = torch.load(sorted(glob(modelsave_path+'/*'), key=lambda x: float(x.split('/')[-1].split('_')[-1]))[0])
         optimizer.load_state_dict(resume['optimizer'])
         model.load_state_dict(resume['model'])
         startepoch = resume['epoch']
