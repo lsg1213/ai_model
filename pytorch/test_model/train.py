@@ -24,6 +24,7 @@ args.add_argument('--resume', action='store_true')
 
 
 def main(config):
+    os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
     SR = 8192
@@ -37,7 +38,11 @@ def main(config):
     ls = 128
 
     ABSpath = '/home/skuser'
+    if not os.path.exists(ABSpath):
+        ABSpath = '/root'
     name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+    if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
+        raise FileNotFoundError('path is wrong')
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
     modelsave_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/model_save/' + name)
     if not os.path.exists(modelsave_path):
@@ -47,6 +52,8 @@ def main(config):
     writer = SummaryWriter(tensorboard_path)
 
     data_path = os.path.join(ABSpath,'data')
+    if not os.path.exists(data_path):
+        data_path = os.path.join(ABSpath, 'datasets/hyundai')
     accel_raw_data = pickle.load(open(os.path.join(data_path,'stationary_accel_data.pickle'),'rb'))
     sound_raw_data = pickle.load(open(os.path.join(data_path,'stationary_sound_data.pickle'),'rb'))
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
