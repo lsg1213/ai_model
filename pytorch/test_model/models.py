@@ -8,14 +8,20 @@ class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs):
         super(CombineAutoencoder, self).__init__()
         self.conv1 = nn.Conv1d(12, 64, 3, padding=1).double()
-        self.conv2 = nn.Conv1d(64, 16, 3, padding=1).double()
+        self.batchnorm1 = nn.BatchNorm1d(64).double()
+        self.conv2 = nn.Conv1d(64, 128, 3, padding=1).double()
+        self.batchnorm2 = nn.BatchNorm1d(128).double()
         self.pool = nn.MaxPool1d(2, 2)
-        self.back = FCAutoencoder(16 * 20, outputs)
+        self.back = FCAutoencoder(128 * 20, outputs)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = self.conv1(x)
+        x = F.relu(self.batchnorm1(x))
+        # x = F.relu(x)
         x = self.pool(x)
-        x = F.relu(self.conv2(x))
+        x = self.conv2(x)
+        x = F.relu(self.batchnorm2(x))
+        # x = F.relu(x)
         x = self.pool(x)
         x = self.back(x)
         return x

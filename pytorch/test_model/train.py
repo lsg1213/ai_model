@@ -6,12 +6,13 @@ from tqdm import tqdm
 import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 import models
-from utils import dataSplit, makeDataset, Conv_S, conv_with_S
+from utils import *
 from torchsummary import summary
 from glob import glob
 args = argparse.ArgumentParser()
 args.add_argument('--lr', type=float, default=0.001)
 args.add_argument('--gpus', type=str, default='0')
+args.add_argument('--name', type=str, default='')
 args.add_argument('--epoch', type=int, default=200)
 args.add_argument('--decay', type=float, default=1/np.sqrt(2))
 args.add_argument('--batch', type=int, default=64)
@@ -40,7 +41,10 @@ def main(config):
     ABSpath = '/home/skuser'
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
-    name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+    if config.name == '':
+        name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+    else:
+        name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
         raise FileNotFoundError('path is wrong')
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
@@ -50,7 +54,7 @@ def main(config):
     if not os.path.exists(tensorboard_path):
         os.makedirs(tensorboard_path)
     writer = SummaryWriter(tensorboard_path)
-
+    print(name)
     data_path = os.path.join(ABSpath,'data')
     if not os.path.exists(data_path):
         data_path = os.path.join(ABSpath, 'datasets/hyundai')
@@ -71,6 +75,7 @@ def main(config):
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
 
     criterion = nn.MSELoss()
+    criterion = nn.SmoothL1Loss()
     if config.opt == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     elif config.opt == 'sgd':
@@ -80,13 +85,17 @@ def main(config):
     # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
     lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
+    min_loss = 10000000000.0
     if config.resume and len(glob(modelsave_path+'/*')) != 0:
-        resume = torch.load(sorted(glob(modelsave_path+'/*'), key=lambda x: float(x.split('/')[-1].split('_')[-1]))[0])
+        resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[-1].split('.')[0]))[0])
         optimizer.load_state_dict(resume['optimizer'])
         model.load_state_dict(resume['model'])
         startepoch = resume['epoch']
+        min_loss = resume['min_loss']
+        lr_schedule.load_state_dict(resume['lr_schedule'])
+
         
-    min_loss = 10000000000.0
+    
     earlystep = 0
     model.to(device)
     for epoch in range(startepoch,EPOCH):
@@ -144,20 +153,24 @@ def main(config):
         torch.save({
             'model': model.state_dict(),
             'epoch': epoch,
-            'optimizer': optimizer.state_dict()
-        }, os.path.join(modelsave_path,f'{epoch}_{val_loss:0.4}'))
+            'optimizer': optimizer.state_dict(),
+            'earlystep': earlystep,
+            'min_loss': min_loss,
+            'lr_schedule': lr_schedule.state_dict()
+        }, os.path.join(modelsave_path,f'{epoch}_{val_loss:0.4}' + '.pt'))
 
         if np.isnan(train_loss) or np.isnan(val_loss):
             print('loss is divergence!')
             break
-        if min_loss > val_loss:
+        if min_loss >= val_loss:
             earlystep = 0
             min_loss = val_loss
         else:
             earlystep += 1
-            if earlystep == 15:
+            if earlystep == 10:
                 print('Early stop!')
                 break
+    print(name)
 
             
 
