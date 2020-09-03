@@ -158,3 +158,20 @@ def dBA_metric(y, gt, plot=True):
         plt.show()
     
     return avg_result
+
+def ema(data, n=40):
+    '''
+    exponential mov
+    '''
+    smoothing_factor = 2. / (n + 1)
+    #get n sma first and calculate the next n period ema
+    ema = torch.zeros_like(data, dtype=data.dtype, device=data.device)
+    ema[:n] = torch.mean(data[:n])
+
+    #EMA(current) = ( (Price(current) - EMA(prev) ) x Multiplier) + EMA(prev)
+    ema.append(( (s[n] - sma) * multiplier) + sma)
+    ema[n] = ((data[n] - ema[n-1]) * smoothing_factor) + ema[n-1]
+    for i,j in enumerate(data[n:]):
+        ema[i] = ((j - ema[i-1]) * smoothing_factor) + ema[i-1]
+
+    return ema
