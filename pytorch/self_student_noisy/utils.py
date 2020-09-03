@@ -51,6 +51,7 @@ class Dataloader_generator():
         self.train = train
         self.divide = divide
         self.perm = torch.randperm(len(self.data))
+        self.win = WindowUtils(config.pad_size, config.step_size, device)
     
     def shuffle(self):
         self.perm = torch.randperm(len(self.data))
@@ -64,8 +65,8 @@ class Dataloader_generator():
             
             # data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
             # labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
-            data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
-            labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
+            data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
+            labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
 
             if len(data) != len(labels):
                 raise ValueError(f'data {data.shape}, labels {labels.shape}')
@@ -82,62 +83,83 @@ class Dataloader_generator():
             yield data_loader
                 
 
+class WindowUtils():
+    def __init__(self, pad_size, step_size, device):
+        self.pad_size = pad_size
+        self.step_size = step_size
+        self.window = torch.cat([torch.arange(-pad_size, -step_size, step_size), torch.tensor([-1, 0, 1]), torch.arange(step_size+1, pad_size+1, step_size)], dim=0)
+        self.device = device
 
-def sequence_to_windows(sequence, 
-                        pad_size, 
-                        step_size, 
-                        skip=1,
-                        padding=True, 
-                        const_value=0):
-    '''
-    SEQUENCE: (time, ...)
-    PAD_SIZE:  int -> width of the window // 2
-    STEP_SIZE: int -> step size inside the window
-    SKIP:      int -> skip windows...
-        ex) if skip == 2, total number of windows will be halved.
-    PADDING:   bool -> whether the sequence is padded or not
-    CONST_VALUE: (int, float) -> value to fill in the padding
+    def sequence_to_windows(self, sequence, 
+                            pad_size, 
+                            step_size, 
+                            skip=1,
+                            padding=True, 
+                            const_value=0):
+        '''
+        SEQUENCE: (time, ...)
+        PAD_SIZE:  int -> width of the window // 2
+        STEP_SIZE: int -> step size inside the window
+        SKIP:      int -> skip windows...
+            ex) if skip == 2, total number of windows will be halved.
+        PADDING:   bool -> whether the sequence is padded or not
+        CONST_VALUE: (int, float) -> value to fill in the padding
+        RETURN: (time, window, ...)
+        '''
+        assert (pad_size-1) % step_size == 0
+        if pad_size == self.pad_size and step_size == self.step_size:
+            window = self.window.to(sequence.device)
+        else:
+            window = torch.cat([torch.arange(-pad_size, -step_size, step_size, device=sequence.device), torch.tensor([-1, 0, 1], device=sequence.device), torch.arange(step_size+1, pad_size+1, step_size, device=sequence.device)], dim=0)
+            window += pad_size
+        output_len = len(sequence) if padding else len(sequence) - 2*pad_size
+        window = window.unsqueeze(0) + torch.arange(0, output_len, skip, device=sequence.device).unsqueeze(-1)
 
-    RETURN: (time, window, ...)
-    '''
-    assert (pad_size-1) % step_size == 0
+        if padding:
+            pad = torch.ones((pad_size, *sequence.shape[1:]), dtype=sequence.dtype, device=sequence.device)
+            pad = pad * const_value
+            sequence = torch.cat([pad, sequence, pad], dim=0)
+        return sequence[window]
 
-    window = torch.cat([torch.arange(-pad_size, -step_size, step_size), torch.tensor([-1, 0, 1]), torch.arange(step_size+1, pad_size+1, step_size)], dim=0)
-    window += pad_size
-    output_len = len(sequence) if padding else len(sequence) - 2*pad_size
-    window = window.unsqueeze(0) + torch.arange(0, output_len, skip).unsqueeze(-1)
+    def windows_to_sequence(self, windows,
+                            pad_size,
+                            step_size):
+        sequence = torch.zeros((windows.shape[0],), dtype=torch.float32, device=windows.device)
+        indices = torch.arange(1, windows.shape[0]+1, device=windows.device)
+        
+        indices = self.sequence_to_windows(indices, pad_size, step_size, True)
+        
+        for i in range(windows.shape[0]):
+            pred = windows[torch.where(indices == i + 1)]
+            sequence[i] = pred.mean()
+        
+        return sequence
 
-    if padding:
-        pad = torch.ones((pad_size, *sequence.shape[1:]), dtype=torch.float32)
-        pad = pad * const_value
-        sequence = torch.cat([pad, sequence, pad], dim=0)
-    return np.take(sequence, window, axis=0)
+    # TODO (test is required)
+    def label_to_window(self, config, skip=1):
+        def _preprocess_label(label):
+            label = self.sequence_to_windows(
+                label, config.pad_size, config.step_size, skip, True)
+            return label
+        return _preprocess_label
 
-# TODO (test is required)
-def label_to_window(config, skip=1):
-    def _preprocess_label(label):
-        label = sequence_to_windows(
-            label, config.pad_size, config.step_size, skip, True)
-        return label
-    return _preprocess_label
+    def preprocess_spec(self, config, feature='mel', skip=1):
+        if feature not in ['spec', 'mel', 'mfcc']:
+            raise ValueError(f'invalid feature - {feature}')
 
-def preprocess_spec(config, feature='mel', skip=1):
-    if feature not in ['spec', 'mel', 'mfcc']:
-        raise ValueError(f'invalid feature - {feature}')
-
-    def _preprocess_spec(spec):
-        if feature in ['spec', 'mel']:
-            spec = torch.log(spec + EPSILON)
-        if feature == 'mel':
-            # spec = (spec - 4.5252) / 2.6146 # normalize
-            
-            # spec = spec / (torch.norm(spec) + 1e-7)
-            spec -= torch.min(spec)
-            spec /= torch.max(spec) + 1e-6
-        spec = spec.transpose(1, 0) # to (time, freq)
-        windows = sequence_to_windows(spec, 
-                                      config.pad_size, config.step_size,
-                                      skip, True, LOG_EPSILON)
-        return windows
-    return _preprocess_spec
+        def _preprocess_spec(spec):
+            if feature in ['spec', 'mel']:
+                spec = torch.log(spec + EPSILON)
+            if feature == 'mel':
+                # spec = (spec - 4.5252) / 2.6146 # normalize
+                if config.norm:
+                    spec = spec / (torch.norm(spec) + 1e-7)
+                spec -= torch.min(spec)
+                spec /= torch.max(spec) + 1e-6
+            spec = spec.transpose(1, 0) # to (time, freq)
+            windows = self.sequence_to_windows(spec, 
+                                        config.pad_size, config.step_size,
+                                        skip, True, LOG_EPSILON)
+            return windows
+        return _preprocess_spec
 
