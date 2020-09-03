@@ -22,14 +22,16 @@ def data_spread(data,data_length):
     return res
     
 class makeDataset(Dataset):
-    def __init__(self, accel, sound, takebeforetime=40, data_length=40):
+    def __init__(self, accel, sound, takebeforetime=40, data_length=40, train=True):
         if takebeforetime % data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         self.accel = data_spread(accel, data_length)
         self.sound = data_spread(sound, data_length)
         self.takebeforetime = takebeforetime
         self.data_length = data_length
-        self.perm = torch.randperm(len(self.accel))
+        self.perm = torch.arange(len(self.accel))
+        if train:
+            self.shuffle()
         if len(accel) < (takebeforetime // data_length) + 1:
             raise ValueError(f'Dataset is too small, {len(accel)}')
     
@@ -44,24 +46,6 @@ class makeDataset(Dataset):
             return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]), self.sound[self.perm[idx]]
         return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))), self.sound[self.perm[idx]]
 
-
-def Conv_S(y, s_filter, device='cpu'):
-    # defined as a function
-    ## New Conv S => Validated
-    Ls, K, M = s_filter.shape
-    Tn = y.shape[0]
-    y_buffer = torch.zeros((Ls, K), device=device)
-    y_p = torch.zeros(y.size(), device=device)
-    #e = torch.zeros(y.size())
-
-    for n in range(Tn):
-        for k in range(K):
-            for m in range(M):
-                y_p[n,m] += torch.dot(y_buffer[:, k], s_filter[:, k, m])
-        #e[n, :] = d[n, :] - y_p[n, :]
-        y_buffer[1:, :] = y_buffer[:-1, :].clone().to(device)
-        y_buffer[0, :] = y[n , :]
-    return y_p
 
 def padding(signal, Ls, device):
     _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=device, dtype=signal.dtype)
@@ -78,3 +62,99 @@ def conv_with_S(signal, S_data, device=torch.device('cpu')):
     out = F.conv1d(signal, S_data.permute([2,0,1]))
 
     return out.transpose(1,2)[:,:-1,:]
+
+import numpy as np
+import scipy
+from scipy.signal import welch, hann
+import matplotlib.pyplot as plt
+
+# FILTERA Generates an A-weighting filter.
+#    FILTERA Uses a closed-form expression to generate
+#    an A-weighting filter for arbitary frequencies.
+#
+# Author: Douglas R. Lanman, 11/21/05
+
+# Define filter coefficients.
+# See: http://www.beis.de/Elektronik/AudioMeasure/
+# WeightingFilters.html#A-Weighting
+def filter_A(F):
+    c1 = 3.5041384e16
+    c2 = 20.598997 ** 2
+    c3 = 107.65265 ** 2
+    c4 = 737.86223 ** 2
+    c5 = 12194.217 ** 2
+
+    f = F
+    arr = np.array(list(map(lambda x : 1e-17 if x == 0 else x, f)))
+
+    num = np.sqrt(c1 * (arr ** 8))
+    den = (f ** 2 + c2) * np.sqrt((f ** 2 + c3) * (f**2 + c4)) * (f ** 2 + c5)
+    A = num / den
+    return A
+
+def write_wav(data, sr=8192, name='test_gen'):
+    data = data.type(torch.float32).numpy()
+    data = data - np.min(data)
+    data /= np.max(data)
+    write(name+'.wav', sr, data)
+    return data
+
+def dBA_metric(y, gt, plot=True):
+    """
+    |args|
+    :y: generated sound data, it's shape should be (time, 8)
+    :gt: ground truth data, it's shape should be (time, 8)
+    :plot: if True, plot graph of each channels
+    """
+    d = gt
+    e = gt - y
+    Tn = y.shape[0]
+    K = 8
+    M = 8
+    """Post processing : performance metric and plots"""
+    p_ref = 20e-6
+    fs = 2000
+    Nfft = fs
+    noverlap = Nfft / 2
+    t = (np.arange(Tn) / fs)[np.newaxis, :]
+    win = hann(fs, False)
+    #autopower calculation
+    D = np.zeros((int(Nfft/2 + 1), M))
+    E = np.zeros((int(Nfft/2 + 1), M))
+    for m in range(M):
+        F, D[:,m] = welch(d[:, m], fs, window=win, noverlap=noverlap, nfft=Nfft, return_onesided=True, detrend=False)
+        F, E[:,m] = welch(e[:, m], fs, window=win, noverlap=noverlap, nfft=Nfft, return_onesided=True, detrend=False)
+    
+    A = filter_A(F)
+    AA = np.concatenate([[A]] * M, axis=0).transpose(1,0)
+    D_A = D * AA ** 2 / p_ref ** 2
+    E_A = E * AA ** 2 / p_ref ** 2
+    
+    # perfomance metric calculation
+    D_A_dBA_Sum = np.zeros((1,M))
+    E_A_dBA_Sum = np.zeros((1,M))
+    freq_range = np.arange(500)
+    result = []
+    for m in range(M):
+        D_A_dBA_Sum[0, m] = 10 * np.log10(np.sum(D_A[freq_range, m]))
+        E_A_dBA_Sum[0, m] = 10 * np.log10(np.sum(E_A[freq_range, m]))
+        result.append(D_A_dBA_Sum[0,m] - E_A_dBA_Sum[0,m])
+    result.append(np.array(np.mean(result)))
+    avg_result = np.mean(result)
+    
+    if plot:
+        for m in range(M):
+            plt.subplot(2, 4, m+1)
+            da = D_A[:,m]
+            ea = E_A[:,m]
+            plt.plot(F, 10 * np.log10(da), color="red", label=f'D{D_A_dBA_Sum[0, m]:.2f}dBA')
+            plt.plot(F, 10 * np.log10(ea), color="blue", label=f'E{E_A_dBA_Sum[0, m]:.2f}dBA')
+            plt.legend()
+            plt.ylim((10, 60))
+            plt.xlim((20,1000))
+            plt.xlabel('Frequency(Hz)')
+            plt.ylabel('Level(dBA)')
+        plt.tight_layout()
+        plt.show()
+    
+    return avg_result
