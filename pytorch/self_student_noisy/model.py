@@ -1,7 +1,33 @@
-import torch, math
+import torch, math, pdb
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+
+class time_distributed(nn.Module):
+    def __init__(self, module, dropout=None, batch_first=True):
+        super().__init__()
+        self.module = module
+        self.dropout = dropout
+        self.batch_first = batch_first
+    
+    def forward(self, x):
+        """Input should be (batch, time, channels)"""
+        x_size = x.size()
+        
+        if len(x_size) <= 2:
+            return self.module(x)
+        
+        x_reshaped = x.contiguous().view(-1, x_size[-1])
+        x_reshaped = self.module(x_reshaped)
+        if dropout is not None:
+            x_reshaped = self.dropout(x_reshaped)
+
+        if self.batch_first:
+            y = x_reshaped.contiguous().view(x_size[0], -1, x_reshaped.size(-1))
+        else:
+            y = x_reshaped.contiguous().view(-1, x_size[0], x_reshaped.size(-1))
+        
+        return y
 
 class spectral_attention_module(nn.Module):
     def __init__(self, input_ch, n_chan):
@@ -26,16 +52,16 @@ class st_attention(nn.Module):
         for i in range(2,5):
             self.add_module(f'spectral_attention{i}', spectral_attention_module(specn_chan, specn_chan * 2))
             specn_chan *= 2
-        self.linear1 = nn.Linear(5*128,256)
+        self.linear1 = time_distributed(nn.Linear(5*128,256))
         self.batchnorm1 = nn.BatchNorm1d(window_size)
         self.dropout1 = nn.Dropout(0.5)
-        self.linear2 = nn.Linear(256,256)
+        self.linear2 = time_distributed(nn.Linear(256,256))
         self.batchnorm2 = nn.BatchNorm1d(window_size)
         self.linear3 = nn.Linear(256,128,bias=False)
         self.linear4 = nn.Linear(256,128,bias=False)
         self.linear5 = nn.Linear(256,128,bias=False)
-        self.linear6 = nn.Linear(128,256)
-        self.linear7 = nn.Linear(256,256)
+        self.linear6 = time_distributed(nn.Linear(128,256))
+        self.linear7 = time_distributed(nn.Linear(256,256))
         self.batchnorm3 = nn.BatchNorm1d(window_size)
         self.dropout2 = nn.Dropout(0.5)
         self.batchnorm4 = nn.BatchNorm1d(window_size)
@@ -51,6 +77,7 @@ class st_attention(nn.Module):
         out = self.spectral_attention2(out)
         out = self.spectral_attention3(out)
         out = self.spectral_attention4(out)
+        pdb.set_trace()
         out = torch.reshape(out, (x.shape[0],x.shape[1],-1))
 
         #pipenet

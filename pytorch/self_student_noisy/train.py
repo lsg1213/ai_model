@@ -16,7 +16,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 
 args = argparse.ArgumentParser()
-args.add_argument('--name', type=str, default='paper_spec_norm')
+args.add_argument('--name', type=str, default='paper_spec')
 args.add_argument('--pad_size', type=int, default=19)
 args.add_argument('--step_size', type=int, default=9)
 args.add_argument('--model', type=str, default='st_attention')
@@ -47,10 +47,10 @@ if not os.path.exists(model_save_path):
     os.makedirs(model_save_path)
 
 PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
-x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
-y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))
-eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))
-eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))
+x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))[:100]
+y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))[:100]
+eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))[:100]
+eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))[:100]
 for i in range(len(x)):
     x[i] = x[i][:, :len(y[i])]
 for i in range(len(eval_x)):
@@ -116,7 +116,7 @@ for epoch in range(startepoch,EPOCHS):
             optimizer.zero_grad()
             pipe_score, multi_score, post_score = model(data)
             # _, preds = torch.max(post_loss, 1)
-            preds = torch.round(post_score).clone()
+            preds = torch.round(post_score).detach()
             pipe_loss = criterion(pipe_score, label)
             multi_loss = criterion(multi_score, label)
             post_loss = criterion(post_score, label)
@@ -154,7 +154,7 @@ for epoch in range(startepoch,EPOCHS):
                     post_loss = criterion(post_score, label)
                     loss = pipe_loss + multi_loss + regularization_weight * post_loss
                     # _, preds = torch.max(post_loss, 1)
-                    preds = torch.round(post_score).clone()
+                    preds = torch.round(post_score).detach()
                     val_loss += loss.item()
                     val_correct += torch.sum(preds == label.data)
                     label_seq = win.windows_to_sequence(label.cpu(),config.pad_size,config.step_size)
