@@ -69,7 +69,7 @@ def main(config):
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
     dataset = makeDataset(accel_raw_data, sound_raw_data, config.b, data_length)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
-    model = getattr(models, config.model)((data_length + config.b) * 12, 40 * 8).to(device)
+    model = getattr(models, config.model)((data_length + config.b), data_length, 12, 8).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)

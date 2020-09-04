@@ -5,14 +5,14 @@ from tqdm import tqdm
 import numpy as np
 
 class CombineAutoencoder(nn.Module):
-    def __init__(self, inputs, outputs):
+    def __init__(self, inputs, outputs, inch, outch):
         super(CombineAutoencoder, self).__init__()
         self.conv1 = nn.Conv1d(12, 64, 3, padding=1).double()
         self.batchnorm1 = nn.BatchNorm1d(64).double()
         self.conv2 = nn.Conv1d(64, 128, 3, padding=1).double()
         self.batchnorm2 = nn.BatchNorm1d(128).double()
         self.pool = nn.MaxPool1d(2, 2)
-        self.back = FCAutoencoder(128 * 20, outputs)
+        self.back = FCAutoencoder(inputs // 4, outputs, 128, 8)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -62,20 +62,19 @@ class ConvAutoencoder(nn.Module):
         return x.transpose(1,2)
 
 class FCAutoencoder(nn.Module):
-    def __init__(self, inputs, outputs):
+    def __init__(self, inputs, outputs, inch, outch):
         super(FCAutoencoder, self).__init__()
         # self.conv1 = nn.Conv1d(12,128,kernel_size=3, stride=1, padding=1)
-        self.linear1 = nn.Linear(inputs,256)
+        self.linear1 = nn.Linear(inputs * inch,256)
         self.linear2 = nn.Linear(256, 128)
         self.linear3 = nn.Linear(128, 64)
         self.linear4 = nn.Linear(64, 30)
         self.linear5 = nn.Linear(30, 64)
         self.linear6 = nn.Linear(64, 128)
         self.linear7 = nn.Linear(128, 256)
-        self.linear8 = nn.Linear(256, outputs)
+        self.linear8 = nn.Linear(256, outputs * outch)
 
     def forward(self, x):
-        
         # x = self.conv1(x.type(torch.float))
         x = torch.reshape(x.type(torch.float), (x.size(0),-1))
         x = self.linear1(x)
