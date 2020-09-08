@@ -45,7 +45,7 @@ def main(config):
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
-        name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+        name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}_feature{config.feature}'
         if config.ema:
             name += '_ema'
         if config.weight:
@@ -76,7 +76,7 @@ def main(config):
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
     dataset = makeDataset(accel_raw_data, sound_raw_data, config)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
-    model = getattr(models, config.model)((data_length + config.b), data_length, 12, 8, config).to(device)
+    model = getattr(models, config.model)(dataset[0][0].shape[1], dataset[0][1].shape[0], dataset[0][0].shape[0], dataset[0][1].shape[1], config).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)

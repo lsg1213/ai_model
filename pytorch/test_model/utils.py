@@ -23,9 +23,9 @@ class makeDataset(Dataset):
                 tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=160)
                 self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
             if type(sound) == list:
-                sound = torch.from_numpy(np.concatenate(sound))
-                pdb.set_trace()
-                self.sound = torch.reshape(sound)
+                sound = torch.from_numpy(np.concatenate(sound)).type(torch.float)
+                tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=160)
+                self.sound = torch.cat([tomel(sound[:,i]).unsqueeze(0) for i in range(sound.shape[-1])]).type(torch.double).transpose(0,2)
 
         elif config.feature == 'wav':
             self.accel = data_spread(accel, self.data_length)
@@ -45,12 +45,14 @@ class makeDataset(Dataset):
         return len(self.accel)
 
     def __getitem__(self, idx):
-        if config.feature == 'wav':
+        if self.config.feature == 'wav':
             if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
-                return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(1,2), self.sound[self.perm[idx]]
-            return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))).transpose(1,2), self.sound[self.perm[idx]]
-        elif config.feature == 'mel':
-            return 
+                return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(0,1), self.sound[self.perm[idx]]
+            return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))).transpose(0,1), self.sound[self.perm[idx]]
+        elif self.config.feature == 'mel':
+            if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
+                return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(0,1), self.sound[self.perm[idx]]
+            return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))).transpose(0,1), self.sound[self.perm[idx]]
         
 
 
