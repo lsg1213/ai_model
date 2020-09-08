@@ -22,6 +22,9 @@ args.add_argument('--opt', type=str, default='adam')
 args.add_argument('--mode', type=str, default='sj_S')
 args.add_argument('--model', type=str, default='CombineAutoencoder')
 args.add_argument('--resume', action='store_true')
+args.add_argument('--ema', action='store_true')
+args.add_argument('--weight', action='store_true')
+args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel'])
 
 
 def main(config):
@@ -43,6 +46,10 @@ def main(config):
         ABSpath = '/root'
     if config.name == '':
         name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+        if config.ema:
+            name += '_ema'
+        if config.weight:
+            name += '_weight'
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
@@ -67,9 +74,9 @@ def main(config):
     # accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length, expand=True)
     # sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length, expand=False)
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
-    dataset = makeDataset(accel_raw_data, sound_raw_data, config.b, data_length)
+    dataset = makeDataset(accel_raw_data, sound_raw_data, config)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
-    model = getattr(models, config.model)((data_length + config.b), data_length, 12, 8).to(device)
+    model = getattr(models, config.model)((data_length + config.b), data_length, 12, 8, config).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
@@ -86,25 +93,28 @@ def main(config):
     lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
     min_loss = 10000000000.0
-    if config.resume and len(glob(modelsave_path+'/*')) != 0:
-        resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[-1].split('.')[0]))[0])
-        optimizer.load_state_dict(resume['optimizer'])
-        model.load_state_dict(resume['model'])
-        startepoch = resume['epoch']
-        min_loss = resume['min_loss']
-        lr_schedule.load_state_dict(resume['lr_schedule'])
+    if config.resume:
+        if len(glob(modelsave_path+'/*')) != 0:
+            resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[-1].split('.')[0]))[0])
+            optimizer.load_state_dict(resume['optimizer'])
+            model.load_state_dict(resume['model'])
+            startepoch = resume['epoch'] + 1
+            min_loss = resume['min_loss']
+            lr_schedule.load_state_dict(resume['lr_schedule'])
+        else:
+            print('resume fail')
+
 
         
     
     earlystep = 0
     model.to(device)
-    for epoch in range(startepoch,EPOCH):
+    for epoch in range(startepoch, EPOCH):
         train_loss = []
         model.train()
         
         with tqdm(train_loader) as pbar:
             for index, (accel, sound) in enumerate(pbar):
-                accel = accel.transpose(1,2)
                 accel = accel.to(device).type(torch.float64)
                 sound = sound.to(device).type(torch.float64)
                 optimizer.zero_grad()
@@ -112,7 +122,7 @@ def main(config):
                 if config.mode == 'ts_S':
                     y_p = Conv_S(y, transfer_f, device)
                 elif config.mode == 'sj_S':
-                    y_p = conv_with_S(y, transfer_f, device)
+                    y_p = conv_with_S(y, transfer_f, config)
                 else:
                     y_p = y
 
@@ -139,7 +149,7 @@ def main(config):
                     if config.mode == 'ts_S':
                         y_p = Conv_S(y, transfer_f, device)
                     elif config.mode == 'sj_S':
-                        y_p = conv_with_S(y, transfer_f, device)
+                        y_p = conv_with_S(y, transfer_f, config)
                     else:
                         y_p = y
 

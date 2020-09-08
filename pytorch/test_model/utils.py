@@ -1,39 +1,41 @@
-import torch, pdb
+import torch, torchaudio, pdb
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import torch.nn.functional as F
 from scipy.io.wavfile import write
 
-# def dataSplit(data, takebeforetime, data_length=40, expand=True):
-#     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
-#     # data shape list(25, np(987136, 12)), accel, 주의: 샘플별로 안 섞이게 하기
-#     # 이걸 자르기, (index, window, channel)
-#     # data_length = int(hp.audio.sr * hp.audio.win_length / 1000000)
-#     if expand:
-#         if takebeforetime != 0:
-#             data = [np.concatenate([np.zeros((takebeforetime, i.shape[1]),dtype='float'), i]) for i in data]
-#         splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx-takebeforetime:idx+data_length][np.newaxis, ...]) for idx in range(takebeforetime, len(_data) - data_length)]) for _data in data[:1]])
-#     else:
-#         splited_data = torch.cat([torch.cat([torch.from_numpy(_data[idx:idx+data_length][np.newaxis, ...]) for idx in range(len(_data) - data_length)]) for _data in data])
-#     return splited_data.cpu()
-
 def data_spread(data,data_length):
-    res = torch.cat([torch.tensor(i[:(len(i) // data_length) * data_length]) for i in data])
-    res = torch.reshape(res, (-1, data_length, res.size(-1)))
+    if type(data) == list:
+        res = torch.cat([torch.tensor(i[:(len(i) // data_length) * data_length]) for i in data])
+        res = torch.reshape(res, (-1, data_length, res.size(-1)))
     return res
     
 class makeDataset(Dataset):
-    def __init__(self, accel, sound, takebeforetime=40, data_length=40, train=True):
-        if takebeforetime % data_length != 0:
+    def __init__(self, accel, sound, config, train=True):
+        self.config = config
+        self.takebeforetime = config.b
+        self.data_length = config.len
+        if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
-        self.accel = data_spread(accel, data_length)
-        self.sound = data_spread(sound, data_length)
-        self.takebeforetime = takebeforetime
-        self.data_length = data_length
+        if config.feature == 'mel':
+            if type(accel) == list:
+                melaccel = torch.from_numpy(np.concatenate(accel)).type(torch.float)
+                tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=160)
+                self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
+            if type(sound) == list:
+                sound = torch.from_numpy(np.concatenate(sound))
+                pdb.set_trace()
+                self.sound = torch.reshape(sound)
+
+        elif config.feature == 'wav':
+            self.accel = data_spread(accel, self.data_length)
+            self.sound = data_spread(sound, self.data_length)
+        else:
+            raise ValueError(f'invalid feature {config.feature}')
         self.perm = torch.arange(len(self.accel))
         if train:
             self.shuffle()
-        if len(accel) < (takebeforetime // data_length) + 1:
+        if len(accel) < (self.takebeforetime // self.data_length) + 1:
             raise ValueError(f'Dataset is too small, {len(accel)}')
     
     def shuffle(self):
@@ -43,26 +45,33 @@ class makeDataset(Dataset):
         return len(self.accel)
 
     def __getitem__(self, idx):
-        if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
-            return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]), self.sound[self.perm[idx]]
-        return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))), self.sound[self.perm[idx]]
+        if config.feature == 'wav':
+            if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
+                return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(1,2), self.sound[self.perm[idx]]
+            return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))).transpose(1,2), self.sound[self.perm[idx]]
+        elif config.feature == 'mel':
+            return 
+        
 
 
-def padding(signal, Ls, device):
-    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=device, dtype=signal.dtype)
+def padding(signal, Ls):
+    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
     
-def conv_with_S(signal, S_data, device=torch.device('cpu')):
+def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M)
-    S_data = torch.tensor(S_data.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device,dtype=signal.dtype)
+    if config.ema:
+        signal = ema(signal, n=2)
+    S_data = torch.tensor(S_data.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=signal.device)
     Ls = S_data.size(1)
     K = S_data.size(-1)
-    signal = padding(signal, Ls, device)
+    signal = padding(signal, Ls)
     if signal.size(1) != K:
         signal = signal.transpose(1,2)
-    out = F.conv1d(signal, S_data.permute([2,0,1]))
-
-    return out.transpose(1,2)[:,:-1,:]
+    
+    out = F.conv1d(signal, S_data.permute([2,0,1]).type(signal.dtype)).transpose(1,2)[:,:-1,:]
+    
+    return out 
 
 import numpy as np
 import scipy
@@ -160,7 +169,7 @@ def dBA_metric(y, gt, plot=True):
     
     return avg_result
 
-def ema(data, n=40):
+def ema(data, n=2):
     '''
     exponential mov
     '''
@@ -170,7 +179,6 @@ def ema(data, n=40):
     ema[:n] = torch.mean(data[:n])
 
     #EMA(current) = ( (Price(current) - EMA(prev) ) x Multiplier) + EMA(prev)
-    ema[n] = ((data[n] - ema[n-1]) * smoothing_factor) + ema[n-1]
     for i,j in enumerate(data[n:]):
         ema[i] = ((j - ema[i-1]) * smoothing_factor) + ema[i-1]
 

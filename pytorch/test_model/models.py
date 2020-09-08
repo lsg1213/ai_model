@@ -5,22 +5,28 @@ from tqdm import tqdm
 import numpy as np
 
 class CombineAutoencoder(nn.Module):
-    def __init__(self, inputs, outputs, inch, outch):
+    def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
-        self.conv1 = nn.Conv1d(12, 64, 3, padding=1).double()
+        self.conv1 = nn.Conv1d(inch, 64, 3, padding=1).double()
         self.batchnorm1 = nn.BatchNorm1d(64).double()
+        self.dropout1 = nn.Dropout(p=0.2).double()
         self.conv2 = nn.Conv1d(64, 128, 3, padding=1).double()
         self.batchnorm2 = nn.BatchNorm1d(128).double()
+        self.dropout2 = nn.Dropout(p=0.2).double()
         self.pool = nn.MaxPool1d(2, 2)
-        self.back = FCAutoencoder(inputs // 4, outputs, 128, 8)
+        self.back = FCAutoencoder(inputs // 4, outputs, 128, outch, config)
+        if config.weight:
+            with torch.no_grad():
+                self.conv1.weight = torch.nn.Parameter(torch.zeros_like(self.conv1.weight) + 1e-5)
+                self.conv2.weight = torch.nn.Parameter(torch.zeros_like(self.conv2.weight) + 1e-5)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = F.relu(self.batchnorm1(x))
+        x = F.relu(self.dropout1(self.batchnorm1(x)))
         # x = F.relu(x)
         x = self.pool(x)
         x = self.conv2(x)
-        x = F.relu(self.batchnorm2(x))
+        x = F.relu(self.dropout2(self.batchnorm2(x)))
         # x = F.relu(x)
         x = self.pool(x)
         x = self.back(x)
@@ -62,7 +68,7 @@ class ConvAutoencoder(nn.Module):
         return x.transpose(1,2)
 
 class FCAutoencoder(nn.Module):
-    def __init__(self, inputs, outputs, inch, outch):
+    def __init__(self, inputs, outputs, inch, outch, config):
         super(FCAutoencoder, self).__init__()
         # self.conv1 = nn.Conv1d(12,128,kernel_size=3, stride=1, padding=1)
         self.linear1 = nn.Linear(inputs * inch,256)
@@ -73,6 +79,11 @@ class FCAutoencoder(nn.Module):
         self.linear6 = nn.Linear(64, 128)
         self.linear7 = nn.Linear(128, 256)
         self.linear8 = nn.Linear(256, outputs * outch)
+        if config.weight:
+            layers = dict(self._modules)
+            for layer in layers.keys():
+                la = getattr(self, layer).weight
+                la = torch.nn.Parameter(torch.zeros_like(la) + 1e-5)
 
     def forward(self, x):
         # x = self.conv1(x.type(torch.float))
