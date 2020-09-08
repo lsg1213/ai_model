@@ -47,10 +47,10 @@ if not os.path.exists(model_save_path):
     os.makedirs(model_save_path)
 
 PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
-x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))[:100]
-y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))[:100]
-eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))[:100]
-eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))[:100]
+x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
+y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))
+eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))
+eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))
 for i in range(len(x)):
     x[i] = x[i][:, :len(y[i])]
 for i in range(len(eval_x)):
@@ -86,7 +86,8 @@ model.to(device)
 criterion = nn.BCELoss()
 # optimizer = optim.SGD(model.parameters(),lr=LR,momentum=0.9)
 optimizer = optim.Adam(model.parameters())
-lr_schedule = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+# lr_schedule = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
 startepoch = 0
 win = WindowUtils(config.pad_size, config.step_size, device)
 min_loss = 1000000000000.0
@@ -159,7 +160,7 @@ for epoch in range(startepoch,EPOCHS):
                     val_correct += torch.sum(preds == label.data)
                     label_seq = win.windows_to_sequence(label.cpu(),config.pad_size,config.step_size)
                     preds_seq = win.windows_to_sequence(preds.cpu(),config.pad_size,config.step_size)
-                    fpr, tpr, thresholds = roc_curve(label_seq.numpy(), preds_seq.numpy(), pos_label=1)
+                    fpr, tpr, thresholds = roc_curve(label_seq.type(torch.int).numpy(), preds_seq.numpy(), pos_label=1)
                     val_auc += auc(fpr, tpr)
                     pbar.set_postfix(accuracy=f'val_loss: {val_loss / ((idx+1) + loader_len):0.4}, val_auc: {val_auc / ((idx+1) + loader_len):0.4}, val_acc: {val_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
                 loader_len += len(pbar)
@@ -187,7 +188,7 @@ for epoch in range(startepoch,EPOCHS):
                     eval_correct += torch.sum(preds == label.data).cpu()
                     label_seq = win.windows_to_sequence(label.cpu(),config.pad_size,config.step_size)
                     preds_seq = win.windows_to_sequence(preds.cpu(),config.pad_size,config.step_size)
-                    fpr, tpr, thresholds = roc_curve(label_seq.numpy(), preds_seq.numpy(), pos_label=1)
+                    fpr, tpr, thresholds = roc_curve(label_seq.type(torch.int).numpy(), preds_seq.numpy(), pos_label=1)
                     _eval_auc = auc(fpr, tpr)
                     eval_auc += _eval_auc
                     pbar.set_postfix(accuracy=f'eval_loss: {eval_loss / ((idx+1) + loader_len):0.4}, eval_auc: {eval_auc / ((idx+1) + loader_len):0.4}, eval_acc: {eval_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
@@ -218,7 +219,8 @@ for epoch in range(startepoch,EPOCHS):
         'lr_schedule':lr_schedule.state_dict(),
         'min_loss':min_loss
         }, model_save_path + f'/{epoch}_auc{eval_auc:0.4}.pt')
-    lr_schedule.step()
+    
+    lr_schedule.step(val_loss)
     torch.cuda.empty_cache()
     if val_loss < min_loss:
         epochs_no_improve = 0

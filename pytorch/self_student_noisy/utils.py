@@ -151,11 +151,11 @@ class WindowUtils():
             if feature in ['spec', 'mel']:
                 spec = torch.log(spec + EPSILON)
             if feature == 'mel':
-                # spec = (spec - 4.5252) / 2.6146 # normalize
+                spec = (spec - 4.5252) / 2.6146 # normalize
                 if config.norm:
                     spec = spec / (torch.norm(spec) + 1e-7)
-                spec -= torch.min(spec)
-                spec /= torch.max(spec) + 1e-6
+                # spec -= torch.min(spec)
+                # spec /= torch.max(spec) + 1e-6
             spec = spec.transpose(1, 0) # to (time, freq)
             windows = self.sequence_to_windows(spec, 
                                         config.pad_size, config.step_size,

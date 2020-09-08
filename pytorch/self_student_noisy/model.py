@@ -19,7 +19,7 @@ class time_distributed(nn.Module):
         
         x_reshaped = x.contiguous().view(-1, x_size[-1])
         x_reshaped = self.module(x_reshaped)
-        if dropout is not None:
+        if self.dropout is not None:
             x_reshaped = self.dropout(x_reshaped)
 
         if self.batch_first:
@@ -60,6 +60,8 @@ class st_attention(nn.Module):
         self.linear3 = nn.Linear(256,128,bias=False)
         self.linear4 = nn.Linear(256,128,bias=False)
         self.linear5 = nn.Linear(256,128,bias=False)
+        # self.linear6 = nn.Linear(128,256)
+        # self.linear7 = nn.Linear(256,256)
         self.linear6 = time_distributed(nn.Linear(128,256))
         self.linear7 = time_distributed(nn.Linear(256,256))
         self.batchnorm3 = nn.BatchNorm1d(window_size)
@@ -77,7 +79,6 @@ class st_attention(nn.Module):
         out = self.spectral_attention2(out)
         out = self.spectral_attention3(out)
         out = self.spectral_attention4(out)
-        pdb.set_trace()
         out = torch.reshape(out, (x.shape[0],x.shape[1],-1))
 
         #pipenet
