@@ -9,6 +9,11 @@ def data_spread(data,data_length):
         res = torch.cat([torch.tensor(i[:(len(i) // data_length) * data_length]) for i in data])
         res = torch.reshape(res, (-1, data_length, res.size(-1)))
     return res
+
+def inverse_mel(data, sr=8192, n_mels=160):
+    # data = (batch, )
+    # data = 
+    pass
     
 class makeDataset(Dataset):
     def __init__(self, accel, sound, config, train=True):
@@ -20,12 +25,10 @@ class makeDataset(Dataset):
         if config.feature == 'mel':
             if type(accel) == list:
                 melaccel = torch.from_numpy(np.concatenate(accel)).type(torch.float)
-                tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=160)
+                tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=config.n_mels)
                 self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
             if type(sound) == list:
-                sound = torch.from_numpy(np.concatenate(sound)).type(torch.float)
-                tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=160)
-                self.sound = torch.cat([tomel(sound[:,i]).unsqueeze(0) for i in range(sound.shape[-1])]).type(torch.double).transpose(0,2)
+                self.sound = data_spread(sound, self.data_length)
 
         elif config.feature == 'wav':
             self.accel = data_spread(accel, self.data_length)

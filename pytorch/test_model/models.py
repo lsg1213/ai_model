@@ -1,4 +1,4 @@
-import torch, pickle, pdb
+import torch, pickle, torchaudio, pdb
 import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -7,6 +7,7 @@ import numpy as np
 class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
+        self.config = config
         self.conv1 = nn.Conv1d(inch, 64, 3, padding=1).double()
         self.batchnorm1 = nn.BatchNorm1d(64).double()
         self.dropout1 = nn.Dropout(p=0.2).double()
@@ -14,12 +15,22 @@ class CombineAutoencoder(nn.Module):
         self.batchnorm2 = nn.BatchNorm1d(128).double()
         self.dropout2 = nn.Dropout(p=0.2).double()
         self.pool = nn.MaxPool1d(2, 2)
+        if config.feature == 'mel':
+            outputs = config.n_mels
         self.back = FCAutoencoder(inputs // 4, outputs, 128, outch, config)
         if config.weight:
             with torch.no_grad():
                 self.conv1.weight = torch.nn.Parameter(torch.zeros_like(self.conv1.weight) + 1e-5)
                 self.conv2.weight = torch.nn.Parameter(torch.zeros_like(self.conv2.weight) + 1e-5)
 
+    def inverse_mel(self, x):
+        pdb.set_trace()
+        shape = x.size()
+        x = x.clone().cpu().detach()
+        x = torchaudio.transforms.InverseMelScale(self.config.b + self.config.len,n_mels=160, sample_rate=8192).double()(x)
+        
+        # x = torchaudio.functional.istft()
+        return x
     def forward(self, x):
         x = self.conv1(x)
         x = F.relu(self.dropout1(self.batchnorm1(x)))
@@ -30,6 +41,8 @@ class CombineAutoencoder(nn.Module):
         # x = F.relu(x)
         x = self.pool(x)
         x = self.back(x)
+        if self.config.feature == 'mel':
+            x = self.inverse_mel(x)
         return x
 
 class ConvAutoencoder(nn.Module):

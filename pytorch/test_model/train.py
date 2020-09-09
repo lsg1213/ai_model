@@ -25,6 +25,7 @@ args.add_argument('--resume', action='store_true')
 args.add_argument('--ema', action='store_true')
 args.add_argument('--weight', action='store_true')
 args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel'])
+args.add_argument('--n_mels', type=int, default=160)
 
 
 def main(config):
@@ -95,7 +96,7 @@ def main(config):
     min_loss = 10000000000.0
     if config.resume:
         if len(glob(modelsave_path+'/*')) != 0:
-            resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[-1].split('.')[0]))[0])
+            resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[0]))[-1])
             optimizer.load_state_dict(resume['optimizer'])
             model.load_state_dict(resume['model'])
             startepoch = resume['epoch'] + 1
@@ -134,14 +135,12 @@ def main(config):
                 # train_acc += torch.sum(preds == sound.data)
                 pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
             train_loss = np.mean(train_loss)
-        writer.add_scalar('train/train_loss', train_loss, epoch)
 
         val_loss = []
         model.eval()
         with torch.no_grad():
             with tqdm(val_loader) as pbar:
                 for index, (accel, sound) in enumerate(pbar):
-                    accel = accel.transpose(1,2)
                     accel = accel.to(device)
                     sound = sound.to(device)
                     optimizer.zero_grad()
@@ -158,6 +157,7 @@ def main(config):
                     val_loss.append(loss.item())
                     pbar.set_postfix(epoch=f'{epoch}', val_loss=f'{np.mean(val_loss):0.4}')
                 val_loss = np.mean(val_loss)
+        writer.add_scalar('train/train_loss', train_loss, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
         lr_schedule.step(val_loss)
         torch.save({
@@ -172,12 +172,12 @@ def main(config):
         if np.isnan(train_loss) or np.isnan(val_loss):
             print('loss is divergence!')
             break
-        if min_loss >= val_loss:
+        if min_loss > val_loss:
             earlystep = 0
             min_loss = val_loss
         else:
             earlystep += 1
-            if earlystep == 10:
+            if earlystep == 5:
                 print('Early stop!')
                 break
     print(name)
