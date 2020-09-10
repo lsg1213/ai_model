@@ -80,7 +80,6 @@ class st_attention(nn.Module):
         out = self.spectral_attention3(out)
         out = self.spectral_attention4(out)
         out = torch.reshape(out, (x.shape[0],x.shape[1],-1))
-
         #pipenet
         out = self.linear1(out)
         out = F.relu(self.batchnorm1(out))

@@ -32,7 +32,7 @@ args.add_argument('--resume', action='store_true')
 args.add_argument('--skip', type=int, default=1)
 args.add_argument('--decay', type=float, default=1/np.sqrt(2))
 args.add_argument('--batch', type=int, default=512)
-args.add_argument('--norm', action='store_true')
+args.add_argument('--norm', type=str, default='paper', choices=['paper', 'timit'])
 args.add_argument('--dataset', type=str, default='noisex')
 config = args.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
@@ -47,10 +47,10 @@ if not os.path.exists(model_save_path):
     os.makedirs(model_save_path)
 
 PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
-x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
-y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))
-eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))
-eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))
+x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))[:100]
+y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))[:100]
+eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))[:100]
+eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))[:100]
 for i in range(len(x)):
     x[i] = x[i][:, :len(y[i])]
 for i in range(len(eval_x)):
