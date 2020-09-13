@@ -27,12 +27,12 @@ class makeDataset(Dataset):
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         if config.feature == 'mel':
-            if type(accel) == list:
-                melaccel = torch.from_numpy(np.concatenate(accel)).type(torch.float)
-                tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=config.n_mels)
-                self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
-            if type(sound) == list:
-                self.sound = data_spread(sound, self.data_length,)
+            # if type(accel) == list:
+            #     melaccel = torch.from_numpy(np.concatenate(accel)).type(torch.float)
+            #     tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=config.n_mels)
+            #     self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
+            # if type(sound) == list:
+            #     self.sound = data_spread(sound, self.data_length)
         elif config.feature == 'wav':
             self.accel = data_spread(accel, self.data_length, config)
             self.sound = data_spread(sound, self.data_length, config)
@@ -64,9 +64,7 @@ class makeDataset(Dataset):
                 sound = self.sound[index:index + self.config.len]
             return accel, sound
         elif self.config.feature == 'mel':
-            if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
-                return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(0,1), self.sound[self.perm[idx]]
-            return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))).transpose(0,1), self.sound[self.perm[idx]]
+            pass
         
 
 
