@@ -4,10 +4,13 @@ import numpy as np
 import torch.nn.functional as F
 from scipy.io.wavfile import write
 
-def data_spread(data,data_length):
+def data_spread(data, data_length, config):
+    '''
+    (number of file, frames, channel) => (all frames, channel)
+    and cut wave frames by data_length
+    '''
     if type(data) == list:
-        res = torch.cat([torch.tensor(i[:(len(i) // data_length) * data_length]) for i in data])
-        res = torch.reshape(res, (-1, data_length, res.size(-1)))
+        res = torch.cat([torch.tensor(i) for i in data])
     return res
 
 def inverse_mel(data, sr=8192, n_mels=160):
@@ -20,6 +23,7 @@ class makeDataset(Dataset):
         self.config = config
         self.takebeforetime = config.b
         self.data_length = config.len
+
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         if config.feature == 'mel':
@@ -28,30 +32,37 @@ class makeDataset(Dataset):
                 tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=config.n_mels)
                 self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
             if type(sound) == list:
-                self.sound = data_spread(sound, self.data_length)
-
+                self.sound = data_spread(sound, self.data_length,)
         elif config.feature == 'wav':
-            self.accel = data_spread(accel, self.data_length)
-            self.sound = data_spread(sound, self.data_length)
+            self.accel = data_spread(accel, self.data_length, config)
+            self.sound = data_spread(sound, self.data_length, config)
         else:
             raise ValueError(f'invalid feature {config.feature}')
-        self.perm = torch.arange(len(self.accel))
+        self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
         if train:
             self.shuffle()
         if len(accel) < (self.takebeforetime // self.data_length) + 1:
             raise ValueError(f'Dataset is too small, {len(accel)}')
+        self.len = len(self.accel)
+        if self.config.future:
+            self.len -= self.config.len
     
     def shuffle(self):
-        self.perm = torch.randperm(len(self.accel))
+        self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
 
     def __len__(self):
-        return len(self.accel)
+        return self.len
 
     def __getitem__(self, idx):
+        idx = self.perm[idx]
         if self.config.feature == 'wav':
-            if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
-                return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(0,1), self.sound[self.perm[idx]]
-            return torch.reshape(self.accel[self.perm[idx] - (self.takebeforetime // self.data_length): self.perm[idx] + 1], (-1, self.accel.size(-1))).transpose(0,1), self.sound[self.perm[idx]]
+            accel = self.accel[idx:idx + self.config.b + self.config.len]
+            if self.config.future:
+                index = idx + self.config.latency
+                sound = self.sound[index + self.config.len:index + 2 * self.config.len]
+            else:
+                sound = self.sound[index:index + self.config.len]
+            return accel, sound
         elif self.config.feature == 'mel':
             if self.perm[idx] - (self.takebeforetime // self.data_length) < 0:
                 return torch.cat([torch.zeros((((self.takebeforetime // self.data_length) - self.perm[idx]) * self.accel.size(1),) + self.accel.shape[2:],dtype=self.accel.dtype,device=self.accel.device),self.accel[self.perm[idx]]]).transpose(0,1), self.sound[self.perm[idx]]

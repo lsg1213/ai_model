@@ -83,6 +83,7 @@ class ConvAutoencoder(nn.Module):
 class FCAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(FCAutoencoder, self).__init__()
+        self.config = config
         # self.conv1 = nn.Conv1d(12,128,kernel_size=3, stride=1, padding=1)
         self.linear1 = nn.Linear(inputs * inch,256)
         self.linear2 = nn.Linear(256, 128)
@@ -101,13 +102,22 @@ class FCAutoencoder(nn.Module):
     def forward(self, x):
         # x = self.conv1(x.type(torch.float))
         x = torch.reshape(x.type(torch.float), (x.size(0),-1))
-        x = self.linear1(x)
-        x = self.linear2(x)
-        x = self.linear3(x)
-        x = self.linear4(x)
-        x = self.linear5(x)
-        x = self.linear6(x)
-        x = self.linear7(x)
+        if self.config.relu:
+            x = F.relu(self.linear1(x))
+            x = F.relu(self.linear2(x))
+            x = F.relu(self.linear3(x))
+            x = F.relu(self.linear4(x))
+            x = F.relu(self.linear5(x))
+            x = F.relu(self.linear6(x))
+            x = F.relu(self.linear7(x))
+        else:
+            x = self.linear1(x)
+            x = self.linear2(x)
+            x = self.linear3(x)
+            x = self.linear4(x)
+            x = self.linear5(x)
+            x = self.linear6(x)
+            x = self.linear7(x)
         out = self.linear8(x)
         out = torch.reshape(out, (out.size(0), -1, 8))
         return out.type(torch.double)   

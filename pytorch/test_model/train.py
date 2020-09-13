@@ -24,6 +24,9 @@ args.add_argument('--model', type=str, default='CombineAutoencoder')
 args.add_argument('--resume', action='store_true')
 args.add_argument('--ema', action='store_true')
 args.add_argument('--weight', action='store_true')
+args.add_argument('--relu', action='store_true')
+args.add_argument('--future', action='store_true')
+args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
 args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel'])
 args.add_argument('--n_mels', type=int, default=160)
 
@@ -51,6 +54,8 @@ def main(config):
             name += '_ema'
         if config.weight:
             name += '_weight'
+        if config.relu:
+            name += '_relu'
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
