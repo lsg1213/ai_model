@@ -15,7 +15,7 @@ args.add_argument('--gpus', type=str, default='0')
 args.add_argument('--name', type=str, default='')
 args.add_argument('--epoch', type=int, default=200)
 args.add_argument('--decay', type=float, default=1/np.sqrt(2))
-args.add_argument('--batch', type=int, default=64)
+args.add_argument('--batch', type=int, default=512)
 args.add_argument('--len', type=int, default=40)
 args.add_argument('--b', type=int, default=40)
 args.add_argument('--opt', type=str, default='adam')
@@ -49,13 +49,15 @@ def main(config):
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
-        name = f'{config.model}_{config.mode}_{config.b}_{data_length}_{config.opt}_{config.lr}_decay{config.decay:0.4}_feature{config.feature}'
+        name = f'{config.model}_{config.mode}_b{config.b}_d{data_length}_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}_feature{config.feature}'
         if config.ema:
             name += '_ema'
         if config.weight:
             name += '_weight'
         if config.relu:
             name += '_relu'
+        if config.future:
+            name += '_future'
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
@@ -96,9 +98,10 @@ def main(config):
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
     # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
-    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=2, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
+    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
     min_loss = 10000000000.0
+    earlystep = 0
     if config.resume:
         if len(glob(modelsave_path+'/*')) != 0:
             resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[0]))[-1])
@@ -107,13 +110,13 @@ def main(config):
             startepoch = resume['epoch'] + 1
             min_loss = resume['min_loss']
             lr_schedule.load_state_dict(resume['lr_schedule'])
+            earlystep = resume['earlystep']
         else:
             print('resume fail')
 
 
         
     
-    earlystep = 0
     model.to(device)
     for epoch in range(startepoch, EPOCH):
         train_loss = []

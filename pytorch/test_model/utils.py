@@ -27,6 +27,7 @@ class makeDataset(Dataset):
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         if config.feature == 'mel':
+            pass
             # if type(accel) == list:
             #     melaccel = torch.from_numpy(np.concatenate(accel)).type(torch.float)
             #     tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=config.n_mels)
@@ -43,7 +44,7 @@ class makeDataset(Dataset):
             self.shuffle()
         if len(accel) < (self.takebeforetime // self.data_length) + 1:
             raise ValueError(f'Dataset is too small, {len(accel)}')
-        self.len = len(self.accel)
+        self.len = len(self.accel) - config.b - config.len - config.latency
         if self.config.future:
             self.len -= self.config.len
     
