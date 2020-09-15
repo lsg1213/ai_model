@@ -9,6 +9,7 @@ import models
 from utils import *
 from torchsummary import summary
 from glob import glob
+from pytorch_model_summary import summary
 args = argparse.ArgumentParser()
 args.add_argument('--lr', type=float, default=0.001)
 args.add_argument('--gpus', type=str, default='0')
@@ -25,6 +26,7 @@ args.add_argument('--resume', action='store_true')
 args.add_argument('--ema', action='store_true')
 args.add_argument('--weight', action='store_true')
 args.add_argument('--relu', action='store_true')
+args.add_argument('--eval', action='store_true')
 args.add_argument('--future', action='store_true')
 args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
 args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel'])
@@ -88,6 +90,7 @@ def main(config):
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
+    
 
     criterion = nn.MSELoss()
     criterion = nn.SmoothL1Loss()

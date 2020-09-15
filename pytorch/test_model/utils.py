@@ -11,6 +11,7 @@ def data_spread(data, data_length, config):
     '''
     if type(data) == list:
         res = torch.cat([torch.tensor(i) for i in data])
+    
     return res
 
 def inverse_mel(data, sr=8192, n_mels=160):
@@ -42,8 +43,6 @@ class makeDataset(Dataset):
         self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
         if train:
             self.shuffle()
-        if len(accel) < (self.takebeforetime // self.data_length) + 1:
-            raise ValueError(f'Dataset is too small, {len(accel)}')
         self.len = len(self.accel) - config.b - config.len - config.latency
         if self.config.future:
             self.len -= self.config.len
@@ -57,13 +56,13 @@ class makeDataset(Dataset):
     def __getitem__(self, idx):
         idx = self.perm[idx]
         if self.config.feature == 'wav':
+            index = idx + self.config.latency
             accel = self.accel[idx:idx + self.config.b + self.config.len]
             if self.config.future:
-                index = idx + self.config.latency
                 sound = self.sound[index + self.config.len:index + 2 * self.config.len]
             else:
                 sound = self.sound[index:index + self.config.len]
-            return accel, sound
+            return accel.transpose(0,1), sound
         elif self.config.feature == 'mel':
             pass
         
