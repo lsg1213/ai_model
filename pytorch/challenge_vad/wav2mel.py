@@ -48,8 +48,9 @@ def main(config):
         #     joblib.dump(mel.numpy(), f)
     def labeltowindow(path):
         label = np.load(path)
-        winlabel = np.concatenate([label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range(label.shape[0] // hop_length - 1)])
-        return winlabel
+        winlabel = [label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range((label.shape[0] - win_length) // hop_length - 1)]
+        
+        return np.concatenate(winlabel)
         
     for i, j in tqdm(zip(wav_path, label_path)):
         if i.split('/')[-1].split('.')[0] != j.split('/')[-1].split('.')[0]:
