@@ -33,32 +33,39 @@ def main(config):
     hop_length = config.hop * config.sr // 1000 # ms
     
     
-    def wavtomel(path):
-        wav, sr = torchaudio.load_wav(path)
-        
-        if sr != config.sr:
-            raise ValueError('sampling rate is different from config.sr')
-        
-        # wav = (channel, time)
-        
-        mel = torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=win_length, hop_length=hop_length, n_mels=config.nmels)(wav)
-        return mel
+    
 
-        # with open(os.path.join(save_path, path.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
-        #     joblib.dump(mel.numpy(), f)
-    def labeltowindow(path):
-        label = np.load(path)
-        winlabel = np.concatenate([label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range(label.shape[0] // hop_length - 1)])
-        return winlabel
-        
-    for i, j in tqdm(zip(wav_path, label_path)):
-        if i.split('/')[-1].split('.')[0] != j.split('/')[-1].split('.')[0]:
+    def datatomel(path):
+        def wavtomel(path):
+            wav, sr = torchaudio.load_wav(path)
+            
+            if sr != config.sr:
+                raise ValueError('sampling rate is different from config.sr')
+            
+            # wav = (channel, time)
+            
+            mel = torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=win_length, hop_length=hop_length, n_mels=config.nmels)(wav)
+            return mel
+
+        def labeltowindow(path):
+            label = np.load(path)
+            winlabel = np.concatenate([label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range(label.shape[0] // hop_length - 1)])
+            return winlabel
+
+        wa, la = path
+        if wa.split('/')[-1].split('.')[0] != la.split('/')[-1].split('.')[0]:
             raise ValueError('data is not matched')
-        mel = wavtomel(i).squeeze(0)
-        lab = torch.from_numpy(labeltowindow(j)).transpose(0,1)
+        mel = wavtomel(wa).squeeze(0)
+        lab = torch.from_numpy(labeltowindow(la)).transpose(0,1)
         mel = mel[:,:lab.size(-1)]
+        return (mel, lab)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=config.cpu) as executor:
+        mel, lab = executor.map(datatomel, zip(wav_path, label_path))
         with open(os.path.join(save_path, path.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
             joblib.dump((mel.numpy(), lab.numpy()), f)
+
+    
+        
 
 
 
