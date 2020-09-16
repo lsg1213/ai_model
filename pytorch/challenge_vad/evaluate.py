@@ -1,6 +1,6 @@
 import torchvision, torch, os
 import torchvision.transforms as transforms
-import torchaudio, pickle, pdb
+import torchaudio, pickle, pdb, joblib
 import torch.nn as nn
 import torch.optim as optim
 from glob import glob
@@ -34,18 +34,26 @@ args.add_argument('--skip', type=int, default=1)
 args.add_argument('--decay', type=float, default=1/np.sqrt(2))
 args.add_argument('--batch', type=int, default=512)
 args.add_argument('--norm', action='store_true')
-args.add_argument('--dataset', type=str, default='noisex')
+args.add_argument('--dataset', type=str, default='tedrium', choices=['tredrium', 'libri'], help='tedrium, libri is available')
 config = args.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 
 name = config.name
 
-PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
-eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))[:1000]
-eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))[:1000]
-for i in range(len(eval_x)):
-    eval_x[i] = eval_x[i][:, :len(eval_y[i])]
+PATH = '/root/datasets/ai_challenge'
+if config.dataset == 'tedrium':
+    datapath = PATH + '/TEDLIUM-3/TEDLIUM_release-3/data'
+    wavpath = datapath + '/mel/tedrium_nfft1024_win25_hop10_nmel80'
+    labelpath = label + '/label'
+    eval_x = [joblib.load(open(i, 'rb')) for i in sorted(glob(wavpath + '/*.joblib'))]
+    eval_x = torch.cat([torch.from_numpy(i).permute(2,1,0).squeeze(-1) for i in eval_x])
+    eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))
+elif config.dataset == 'libri':
+    eval_x = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_x_mel.pickle', 'rb'))
+    eval_y = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_y_mel.pickle', 'rb'))
+    for i in range(len(eval_x)):
+        eval_x[i] = eval_x[i][:, :len(eval_y[i])]
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 regularization_weight = 0.1
 eval_times = 1

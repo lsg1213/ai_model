@@ -49,8 +49,9 @@ if not os.path.exists(model_save_path):
 PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))[:100]
 y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))[:100]
-eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))[:100]
-eval_x = pickle.load(open(PATH+'/libri_aurora_val_x_mel.pickle', 'rb'))[:100]
+eval_y = pickle.load(open(PATH+'/libri_aurora_y_mel.pickle', 'rb'))[:100]
+eval_x = pickle.load(open(PATH+'/libri_aurora_x_mel.pickle', 'rb'))[:100]
+pdb.set_trace()
 for i in range(len(x)):
     x[i] = x[i][:, :len(y[i])]
 for i in range(len(eval_x)):
