@@ -49,8 +49,9 @@ def main(config):
 
         def labeltowindow(path):
             label = np.load(path)
-            winlabel = np.concatenate([label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range(label.shape[0] // hop_length - 1)])
-            return winlabel
+            winlabel = [label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range((label.shape[0] - win_length) // hop_length - 1)]
+            
+            return np.concatenate(winlabel)
 
         wa, la = path
         if wa.split('/')[-1].split('.')[0] != la.split('/')[-1].split('.')[0]:
@@ -59,7 +60,8 @@ def main(config):
         lab = torch.from_numpy(labeltowindow(la)).transpose(0,1)
         mel = mel[:,:lab.size(-1)]
         return (mel, lab)
-    with concurrent.futures.ProcessPoolExecutor(max_workers=config.cpu) as executor:
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=config.cpu) as executor:
         mel, lab = executor.map(datatomel, zip(wav_path, label_path))
         with open(os.path.join(save_path, path.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
             joblib.dump((mel.numpy(), lab.numpy()), f)
