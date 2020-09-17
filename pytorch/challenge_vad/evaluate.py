@@ -14,7 +14,7 @@ from tqdm import tqdm
 from time import time
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
-
+import concurrent.futures, multiprocessing
 
 args = argparse.ArgumentParser()
 args.add_argument('--name', type=str, required=True)
@@ -24,14 +24,13 @@ args.add_argument('--model', type=str, default='st_attention')
 args.add_argument('--lr', type=float, default=0.001)
 args.add_argument('--opt', type=str, default='adam')
 args.add_argument('--gpus', type=str, default='0,1,2,3')
-args.add_argument('--epoch', type=int, default=50)
 args.add_argument('--feature', type=str, default='mel')
 args.add_argument('--noise_aug', action='store_true')
 args.add_argument('--voice_aug', action='store_true')
 args.add_argument('--aug', action='store_true')
 args.add_argument('--resume', action='store_true')
 args.add_argument('--batch', type=int, default=512)
-args.add_argument('--norm', action='store_true')
+args.add_argument('--norm', type=str, default='paper', choices=['paper', 'timit'])
 args.add_argument('--dataset', type=str, default='tedrium', choices=['tredrium', 'libri'], help='tedrium, libri is available')
 config = args.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
@@ -52,17 +51,23 @@ if config.dataset == 'tedrium':
     preprocessing_name = '/tedrium_nfft512_win32_hop16_nmel80'
     wavpath = datapath + preprocessing_name + '/mel'
     labelpath = datapath + preprocessing_name + '/label'
-    joblib.load(open(sorted(glob(wavpath + '/*.joblib'))[0], 'rb'))
-    eval_x = [joblib.load(open(i, 'rb')) for i in sorted(glob(wavpath + '/*.joblib'))]
-    eval_y = [joblib.load(open(i, 'rb')) for i in sorted(glob(labelpath + '/*.joblib'))]
+    def loading(path):
+        return joblib.load(open(path, 'rb'))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 3 * 2) as pool:
+        eval_x = list(pool.map(loading, sorted(glob(wavpath + '/*.joblib'))))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 3 * 2) as pool:
+        eval_y = list(pool.map(loading, sorted(glob(labelpath + '/*.joblib'))))
     if len(eval_y[0].shape) == 2:
-        eval_y = [np.round(np.mean(i, axis=0)) for i in eval_y]
+        def reduce_mean(data):
+            return np.round(np.mean(data, axis=0))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as pool:
+            eval_y = list(pool.map(reduce_mean, eval_y))
 elif config.dataset == 'libri':
     eval_x = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_x_mel.pickle', 'rb'))
     eval_y = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_y_mel.pickle', 'rb'))
     for i in range(len(eval_x)):
         eval_x[i] = eval_x[i][:, :len(eval_y[i])]
-
+print('data load success')
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 regularization_weight = 0.1
 eval_times = 3
@@ -111,4 +116,7 @@ with torch.no_grad():
     eval_loss /= loader_len
     eval_correct /= loader_len * 7 * BATCH_SIZE
     eval_auc /= loader_len
+    writer.add_scalar('loss/eval_loss',eval_loss, 0)
+    writer.add_scalar('acc/eval_acc',eval_correct, 0)
+    writer.add_scalar('auc/eval_auc',eval_auc, 0)
 print(f'eval_loss: {eval_loss:0.4}, eval_acc: {eval_correct:0.4}, eval_auc: {eval_auc:0.4}, time: {time() - start_time:0.4}')
