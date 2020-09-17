@@ -30,8 +30,6 @@ args.add_argument('--noise_aug', action='store_true')
 args.add_argument('--voice_aug', action='store_true')
 args.add_argument('--aug', action='store_true')
 args.add_argument('--resume', action='store_true')
-args.add_argument('--skip', type=int, default=1)
-args.add_argument('--decay', type=float, default=1/np.sqrt(2))
 args.add_argument('--batch', type=int, default=512)
 args.add_argument('--norm', action='store_true')
 args.add_argument('--dataset', type=str, default='tedrium', choices=['tredrium', 'libri'], help='tedrium, libri is available')
@@ -39,36 +37,46 @@ config = args.parse_args()
 os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 
-name = config.name
+name = config.name + '_eval_tedrium'
+tensorboard_path = './tensorboard_log/'+name
+if not os.path.exists(tensorboard_path):
+    os.makedirs(tensorboard_path)
+writer = SummaryWriter(tensorboard_path)
+
+model_path = './model_save' + f'/{config.name}'
+model_path = sorted(glob(model_path + '/*.pt'), key=lambda x: float(x.split('/')[-1].split('auc')[-1].split('.pt')[0]))[-1]
 
 PATH = '/root/datasets/ai_challenge'
 if config.dataset == 'tedrium':
-    datapath = PATH + '/TEDLIUM-3/TEDLIUM_release-3/data'
-    wavpath = datapath + '/mel/tedrium_nfft1024_win25_hop10_nmel80'
-    labelpath = label + '/label'
+    datapath = PATH + '/TEDLIUM-3/TEDLIUM_release-3/data/mel'
+    preprocessing_name = '/tedrium_nfft512_win32_hop16_nmel80'
+    wavpath = datapath + preprocessing_name + '/mel'
+    labelpath = datapath + preprocessing_name + '/label'
+    joblib.load(open(sorted(glob(wavpath + '/*.joblib'))[0], 'rb'))
     eval_x = [joblib.load(open(i, 'rb')) for i in sorted(glob(wavpath + '/*.joblib'))]
-    eval_x = torch.cat([torch.from_numpy(i).permute(2,1,0).squeeze(-1) for i in eval_x])
-    eval_y = pickle.load(open(PATH+'/libri_aurora_val_y_mel.pickle', 'rb'))
+    eval_y = [joblib.load(open(i, 'rb')) for i in sorted(glob(labelpath + '/*.joblib'))]
+    if len(eval_y[0].shape) == 2:
+        eval_y = [np.round(np.mean(i, axis=0)) for i in eval_y]
 elif config.dataset == 'libri':
     eval_x = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_x_mel.pickle', 'rb'))
     eval_y = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_y_mel.pickle', 'rb'))
     for i in range(len(eval_x)):
         eval_x[i] = eval_x[i][:, :len(eval_y[i])]
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 regularization_weight = 0.1
-eval_times = 1
+eval_times = 3
 win = WindowUtils(config.pad_size, config.step_size, device)
 BATCH_SIZE = config.batch
 transform = torchvision.transforms.Compose([transforms.ToTensor()])
 evalloader = Dataloader_generator(eval_x, eval_y, transform, config=config, device=device, n_data_per_epoch=len(eval_x), divide=eval_times, batch_size=BATCH_SIZE)
 model = st_attention(device=device)
+model.load_state_dict(torch.load(model_path)['model'])
 model.to(device)
-model_save_path = './model_save/'+name
+
 # res = sorted(glob(model_save_path + '/*'), key=lambda x: float(x.split('auc')[-1].split('.pt')[0]), reverse=True)[0]
 # print(res)
-res = sorted(glob(model_save_path + '/*'), key=lambda x: int(x.split('/')[-1].split('_')[0]), reverse=True)[0]
-print(res)
-model.load_state_dict(torch.load(res)['model'])
+
 model.eval()
 eval_loss, eval_correct, eval_auc = 0.0, 0.0, 0.0
 criterion = nn.BCELoss()
@@ -80,7 +88,7 @@ with torch.no_grad():
         with tqdm(eval_loader) as pbar:
             for idx, (data, label) in enumerate(pbar):
                 data = data.to(device)
-                label = label.to(device)
+                label = label.type(data.dtype).to(device)
                 pipe_score, multi_score, post_score = model(data)
                 pipe_loss = criterion(pipe_score, label)
                 multi_loss = criterion(multi_score, label)

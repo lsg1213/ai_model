@@ -4,6 +4,7 @@ import numpy as np
 from random import choice
 from glob import glob
 import pdb
+import concurrent.futures, multiprocessing
 # PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 # x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
 # y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))
@@ -56,7 +57,7 @@ class Dataloader_generator():
     def shuffle(self):
         self.perm = torch.randperm(len(self.data))
 
-    def next_loader(self, idx):        
+    def next_loader(self, idx):
         data = [self.data[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
         label = [self.labels[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
 
@@ -65,8 +66,9 @@ class Dataloader_generator():
             
             # data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
             # labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
-            data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
-            labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as pool:
+                data = torch.cat(list(pool.map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
+                labels = torch.cat(list(pool.map(self.win.label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
 
             if len(data) != len(labels):
                 raise ValueError(f'data {data.shape}, labels {labels.shape}')

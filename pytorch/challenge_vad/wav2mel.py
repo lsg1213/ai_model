@@ -14,6 +14,8 @@ args.add_argument('--sr', type=int, default=16000, help='hz')
 args.add_argument('--cpu', type=int, default=multiprocessing.cpu_count() // 2, help='using number of cpu')
 
 config = args.parse_args()
+win_length = config.win * config.sr // 1000 # ms
+hop_length = config.hop * config.sr // 1000 # ms
 
 
 def main(config):
@@ -26,11 +28,11 @@ def main(config):
     wav_path = sorted(glob(path+'/*.wav'))
     label_path = sorted(glob(label_path + '/*'))
     save_path = os.path.join(ABSpath, f'TEDLIUM-3/TEDLIUM_release-3/data/mel/tedrium_nfft{config.nfft}_win{config.win}_hop{config.hop}_nmel{config.nmels}')
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
+    if not os.path.exists(save_path + '/mel'):
+        os.makedirs(save_path + '/mel')
+    if not os.path.exists(save_path + '/label'):
+        os.makedirs(save_path + '/label')
     
-    win_length = config.win * config.sr // 1000 # ms
-    hop_length = config.hop * config.sr // 1000 # ms
     
     
     
@@ -59,12 +61,13 @@ def main(config):
         mel = wavtomel(wa).squeeze(0)
         lab = torch.from_numpy(labeltowindow(la)).transpose(0,1)
         mel = mel[:,:lab.size(-1)]
-        return (mel, lab)
+        with open(os.path.join(save_path+'/mel', wa.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
+            joblib.dump(mel.numpy(), f)
+        with open(os.path.join(save_path+'/label', la.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
+            joblib.dump(lab.numpy(), f)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=config.cpu) as executor:
-        mel, lab = executor.map(datatomel, zip(wav_path, label_path))
-        with open(os.path.join(save_path, path.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
-            joblib.dump((mel.numpy(), lab.numpy()), f)
+        executor.map(datatomel, zip(wav_path, label_path))
 
     
         
@@ -75,8 +78,28 @@ def main(config):
     # with concurrent.futures.ProcessPoolExecutor(max_workers=config.cpu) as executor:
     #     executor.map(wavtomel, data_path)
     
+def wavtomel(path):
+    wav, sr = torchaudio.load_wav(path)
+    
+    if sr != config.sr:
+        raise ValueError('sampling rate is different from config.sr')
+    
+    # wav = (channel, time)
+    
+    mel = torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=win_length, hop_length=hop_length, n_mels=config.nmels)(wav)
+    return mel
 
+def labeltowindow(path):
+    label = np.load(path)
+    winlabel = [label[hop_length * t:hop_length * t + win_length][np.newaxis, ...] for t in range((label.shape[0] - win_length) // hop_length - 1)]
+    
+    return np.concatenate(winlabel)
 
 if __name__ == "__main__":
-    main(config)
+    # main(config)
+    w = '/root/datasets/ai_challenge/TEDLIUM-3/TEDLIUM_release-3/data/wav/911Mothers_2010W.wav'
+    l = '/root/datasets/ai_challenge/TEDLIUM-3/TEDLIUM_release-3/data/label/911Mothers_2010W.npy'
+    mel = wavtomel(w).squeeze(0)
+    lab = torch.from_numpy(labeltowindow(l)).transpose(0,1)
+    pdb.set_trace()
     # kk()
