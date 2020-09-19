@@ -21,14 +21,8 @@ args.add_argument('--name', type=str, required=True)
 args.add_argument('--pad_size', type=int, default=19)
 args.add_argument('--step_size', type=int, default=9)
 args.add_argument('--model', type=str, default='st_attention')
-args.add_argument('--lr', type=float, default=0.001)
-args.add_argument('--opt', type=str, default='adam')
 args.add_argument('--gpus', type=str, default='0,1,2,3')
 args.add_argument('--feature', type=str, default='mel')
-args.add_argument('--noise_aug', action='store_true')
-args.add_argument('--voice_aug', action='store_true')
-args.add_argument('--aug', action='store_true')
-args.add_argument('--resume', action='store_true')
 args.add_argument('--batch', type=int, default=512)
 args.add_argument('--norm', type=str, default='paper', choices=['paper', 'timit'])
 args.add_argument('--dataset', type=str, default='tedrium', choices=['tredrium', 'libri'], help='tedrium, libri is available')
@@ -53,28 +47,28 @@ if config.dataset == 'tedrium':
     labelpath = datapath + preprocessing_name + '/label'
     def loading(path):
         return joblib.load(open(path, 'rb'))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 3 * 2) as pool:
+    print('get x')
+    with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as pool:
         eval_x = list(pool.map(loading, sorted(glob(wavpath + '/*.joblib'))))
-    with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 3 * 2) as pool:
+    print('get y')
+    with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as pool:
         eval_y = list(pool.map(loading, sorted(glob(labelpath + '/*.joblib'))))
-    if len(eval_y[0].shape) == 2:
-        def reduce_mean(data):
-            return np.round(np.mean(data, axis=0))
-        with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as pool:
-            eval_y = list(pool.map(reduce_mean, eval_y))
+    
 elif config.dataset == 'libri':
     eval_x = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_x_mel.pickle', 'rb'))
     eval_y = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_y_mel.pickle', 'rb'))
-    for i in range(len(eval_x)):
-        eval_x[i] = eval_x[i][:, :len(eval_y[i])]
+for i in range(len(eval_x)):
+    eval_x[i] = eval_x[i][:, :len(eval_y[i])]
 print('data load success')
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 regularization_weight = 0.1
-eval_times = 3
+eval_times = 10
 win = WindowUtils(config.pad_size, config.step_size, device)
 BATCH_SIZE = config.batch
 transform = torchvision.transforms.Compose([transforms.ToTensor()])
 evalloader = Dataloader_generator(eval_x, eval_y, transform, config=config, device=device, n_data_per_epoch=len(eval_x), divide=eval_times, batch_size=BATCH_SIZE)
+eval_x = None
+eval_y = None
 model = st_attention(device=device)
 model.load_state_dict(torch.load(model_path)['model'])
 model.to(device)
