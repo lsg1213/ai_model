@@ -89,14 +89,12 @@ def auroralibri(config):
         wav_path = sorted([x for y in sorted(glob(os.path.join(_path, 'wav/*.wav')) for _path in path) for x in y])
         label_path = sorted(glob(os.path.join(data_path, 'train-clean-100-label-rvad/*.npy')))
         label_path *= int(len(wav_path) / len(label_path))
-        save_path = os.path.join(data_path, 'mel')
         for wa, la in zip(wav_path, label_path):
             _wa = '-'.join(wa.split('/')[-1].split('.wav')[0].split('-')[:-1])
             _la = '-'.join(la.split('/')[-1].split('.npy')[0].split('-')[:-1])
             if _wa != _la:
                 raise ValueError(f'wave_path {wave_path}\nlabel_path {label_path}')
         
-
         
         def load_label(path):
             return np.load(path)
@@ -127,21 +125,18 @@ def auroralibri(config):
         
         def save(data, path):
             _path = os.path.join(save_path, f'{path}')
-            if os.path.exists(_path):
+            if not os.path.exists(_path):
                 os.makedirs(_path)
 
             def _save(data):
-                # 이거 변수 해결하기
-                pdb.set_trace()
-                print(os.path.join(_path, f'{data[0]}_{snr}_train_x.joblib'))
                 joblib.dump(data[1], open(os.path.join(_path, f'{data[0]}_{snr}_train_x.joblib'), 'wb'))
             
-            for i in enumerate(data):
-                _save(i)
-            # with concurrent.futures.ThreadPoolExecutor() as pool:
-            #     pool.map(_save, data)
-        save(mels.split(20), 'data')
-        save(labels.split(20), 'label')
+            # for i in data:
+            #     _save(i)
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                pool.map(_save, data)
+        save(enumerate(mels.split(mels.size(0) // 20)), 'data')
+        save(enumerate(labels.split(labels.size(0) // 20)), 'label')
 
 def timitnoisex(config):
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
