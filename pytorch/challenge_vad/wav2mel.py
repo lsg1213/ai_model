@@ -74,8 +74,74 @@ def tedrium(config):
     # with concurrent.futures.ProcessPoolExecutor(max_workers=config.cpu) as executor:
     #     executor.map(wavtomel, data_path)
     
+def auroralibri(config):
+    ABSpath = '/root/datasets/ai_challenge'
+    data_path = ABSpath + '/ST_attention_Libri_aurora'
+    save_path = os.path.join(data_path, f'mel/libriaurora_nfft{config.nfft}_win{config.win}_hop{config.hop}_nmel{config.nmels}')
+    if not os.path.exists(save_path + '/data'):
+        os.makedirs(save_path + '/data')
+    if not os.path.exists(save_path + '/label'):
+        os.makedirs(save_path + '/label')
 
+    snrs = ['-10', '-5', '0']
+    for snr in snrs:
+        path = sorted(glob(os.path.join(data_path, snr) + '/*'))
+        wav_path = sorted([x for y in sorted(glob(os.path.join(_path, 'wav/*.wav')) for _path in path) for x in y])
+        label_path = sorted(glob(os.path.join(data_path, 'train-clean-100-label-rvad/*.npy')))
+        label_path *= int(len(wav_path) / len(label_path))
+        save_path = os.path.join(data_path, 'mel')
+        for wa, la in zip(wav_path, label_path):
+            _wa = '-'.join(wa.split('/')[-1].split('.wav')[0].split('-')[:-1])
+            _la = '-'.join(la.split('/')[-1].split('.npy')[0].split('-')[:-1])
+            if _wa != _la:
+                raise ValueError(f'wave_path {wave_path}\nlabel_path {label_path}')
+        
 
+        
+        def load_label(path):
+            return np.load(path)
+
+        def wavtomel(path):
+            wav, sr = torchaudio.load_wav(path)
+            
+            if sr != config.sr:
+                raise ValueError('sampling rate is different from config.sr')
+            
+            # wav = (channel, time)
+            
+            mel = torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=win_length, hop_length=hop_length, n_mels=config.nmels)(wav)
+            return mel
+
+        wav_path = wav_path[:10]
+        label_path = label_path[:10] 
+        with concurrent.futures.ThreadPoolExecutor(1) as pool:
+            mels = list(pool.map(wavtomel, wav_path))
+            labels = list(pool.map(load_label, label_path))
+        for i, j in enumerate(labels):
+            mels[i] = mels[i][:,:,:len(j)].squeeze(0).transpose(0,1)
+        mels = torch.cat(mels)
+        labels = torch.from_numpy(np.concatenate(labels))
+
+        if mels.size(0) != labels.size(0):
+            raise ValueError(f'mel len {mels.size(0)}, labels len {labels.size(0)}')
+        
+        def save(data, path):
+            _path = os.path.join(save_path, f'{path}')
+            if os.path.exists(_path):
+                os.makedirs(_path)
+
+            def _save(data):
+                # 이거 변수 해결하기
+                pdb.set_trace()
+                print(os.path.join(_path, f'{data[0]}_{snr}_train_x.joblib'))
+                joblib.dump(data[1], open(os.path.join(_path, f'{data[0]}_{snr}_train_x.joblib'), 'wb'))
+            
+            for i in enumerate(data):
+                _save(i)
+            # with concurrent.futures.ThreadPoolExecutor() as pool:
+            #     pool.map(_save, data)
+        save(mels.split(20), 'data')
+        save(labels.split(20), 'label')
 
 def timitnoisex(config):
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
@@ -93,6 +159,10 @@ def timitnoisex(config):
     ks = ['train', 'test']
     for snr in snrs:
         for k in ks:
+            save_data_path = os.path.join(save_path, f'{k}/{snr}')
+            if not os.path.exists(save_data_path):
+                os.makedirs(save_data_path+'/mel')
+                os.makedirs(save_data_path+'/label')
             label_path = sorted(glob(data_path + f'/{k}_label/wrd/*.npy'))
             for noise in glob(data_path+f'/{snr}/*'):
                 wav_path = sorted(glob(noise + f'/{k}_wav/*.wav'))
@@ -123,11 +193,11 @@ def timitnoisex(config):
                     mel = wavtomel(wa).squeeze(0)
                     lab = torch.round(torch.mean(torch.from_numpy(labeltowindow(la)).transpose(0,1).double(),dim=0))
                     mel = mel[:,:lab.size(-1)]
-                    with open(os.path.join(save_path+'/mel', wa.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
+
+                    with open(os.path.join(save_data_path+'/mel', wa.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
                         joblib.dump(mel.numpy(), f)
-                    with open(os.path.join(save_path+'/label', la.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
+                    with open(os.path.join(save_data_path+'/label', la.split('/')[-1].split('.')[0]) + '.joblib', 'wb') as f:
                         joblib.dump(lab.numpy(), f)
-                
                 with concurrent.futures.ThreadPoolExecutor(max_workers=config.cpu) as executor:
                     executor.map(datatomel, zip(wav_path, label_path))
     # wav_path = sorted(glob(path+'/*.wav'))
@@ -141,4 +211,5 @@ def timitnoisex(config):
 if __name__ == "__main__":
     os.environ['CUDA_VISIBLE_DEVCIES'] = config.gpus
     # tedrium(config)
-    timitnoisex(config)
+    # timitnoisex(config)
+    auroralibri(config)

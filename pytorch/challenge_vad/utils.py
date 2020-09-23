@@ -1,10 +1,11 @@
-import torch, pickle, pdb
+import torch, pickle, pdb, joblib
 from glob import glob
 import numpy as np
 from random import choice
 from glob import glob
 import pdb
 import concurrent.futures, multiprocessing
+from sklearn.metrics import auc, roc_curve
 # PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 # x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
 # y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))
@@ -20,6 +21,10 @@ import concurrent.futures, multiprocessing
 EPSILON = torch.tensor(1e-8)
 LOG_EPSILON = torch.log(EPSILON)
 
+def getAUC(pred, truth):
+    fpr, tpr, thresholds = roc_curve(truth.numpy(), pred.numpy(), pos_label=1)
+    return auc(fpr, tpr)
+
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, x, y, train=True, transform=None):
         self.transform = transform
@@ -34,8 +39,8 @@ class Dataset(torch.utils.data.Dataset):
         # x = self.x[idx, :, :]
         # y = self.y[idx, :]
         # pickle을 여기에서 불러와서 각 pickle별로 index에 변화를 주어 만들기
-        x = self.x_data[idx, :, :]
-        y = self.y_data[idx, :]
+        x = self.x_data[idx, :, :].type(torch.float)
+        y = self.y_data[idx, :].type(torch.float)
 
         return x, y
 
@@ -62,25 +67,26 @@ class Dataloader_generator():
         label = [self.labels[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
 
         while True:
-            # perm = torch.randperm(len(data)).to(self.device)
+            perm = torch.randperm(len(data)).to(self.device)
             
-            # data = torch.cat(list(map(preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
-            # labels = torch.cat(list(map(label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
-            with concurrent.futures.ThreadPoolExecutor(max_workers=multiprocessing.cpu_count() // 2) as pool:
-                data = torch.cat(list(pool.map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
-                labels = torch.cat(list(pool.map(self.win.label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
+            data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
+            labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
+            # with concurrent.futures.ThreadPoolExecutor() as pool:
+            #     data = torch.cat(list(pool.map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
+            # with concurrent.futures.ThreadPoolExecutor() as pool:  
+            #     labels = torch.cat(list(pool.map(self.win.label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
 
             if len(data) != len(labels):
                 raise ValueError(f'data {data.shape}, labels {labels.shape}')
 
-            dataset = Dataset(data,labels, transform=self.transform)
+            dataset = Dataset(data, labels, transform=self.transform)
             data_loader = torch.utils.data.DataLoader(dataset=dataset,
                                                     batch_size = self.batch_size,
                                                     shuffle=True if self.train else False,
                                                     drop_last=True
                                                 )
-            data = None
-            labels = None
+            del data
+            del labels
             torch.cuda.empty_cache()
             yield data_loader
                 
@@ -135,7 +141,7 @@ class WindowUtils():
             pred = windows[torch.where(indices == i + 1)]
             sequence[i] = pred.mean()
         
-        return sequence
+        return torch.round(sequence)
 
     # TODO (test is required)
     def label_to_window(self, config, skip=1):
@@ -165,3 +171,6 @@ class WindowUtils():
             return windows
         return _preprocess_spec
 
+def getDataFromPath(path):
+    data = joblib.load(open(path, 'rb'))
+    return data
