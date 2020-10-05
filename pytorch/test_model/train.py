@@ -93,7 +93,7 @@ def main(config):
     
 
     criterion = nn.MSELoss()
-    criterion = nn.SmoothL1Loss()
+    # criterion = nn.SmoothL1Loss()
     if config.opt == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     elif config.opt == 'sgd':
@@ -101,7 +101,7 @@ def main(config):
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
     # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
-    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
+    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
     startepoch = 0
     min_loss = 10000000000.0
     earlystep = 0
@@ -144,7 +144,8 @@ def main(config):
                 # _, preds = torch.max(y_p, 1)
                 train_loss.append(loss.item())
                 # train_acc += torch.sum(preds == sound.data)
-                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
+                # pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
+                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
             train_loss = np.mean(train_loss)
 
         val_loss = []
