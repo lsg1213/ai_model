@@ -8,14 +8,23 @@ class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
         self.config = config
-        self.conv1 = nn.Conv1d(inch, 128, 3, stride=2, padding=1)
+        # self.conv1 = nn.Conv1d(inch, 128, 3, stride=2, padding=1)
         # self.batchnorm1 = nn.BatchNorm1d(128)
-        self.dropout1 = nn.Dropout(p=0.2)
-        self.conv2 = nn.Conv1d(128, 8, 1)
+        # self.dropout1 = nn.Dropout(p=0.2)
+        # self.conv2 = nn.Conv1d(128, 8, 1)
         # self.batchnorm2 = nn.BatchNorm1d(8)
+        # self.dropout2 = nn.Dropout(p=0.2)
+        
+        self.conv1 = nn.Conv1d(inch, 64, 3, padding=1)
+        self.batchnorm1 = nn.BatchNorm1d(64)
+        self.dropout1 = nn.Dropout(p=0.2)
+        self.conv2 = nn.Conv1d(64, 128, 3, padding=1)
+        self.batchnorm2 = nn.BatchNorm1d(128)
         self.dropout2 = nn.Dropout(p=0.2)
+
         if config.feature == 'mel':
             outputs = config.n_mels
+        # self.back = FCAutoencoder()
         self.back = FCAutoencoder((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1, config.len, self.conv2.out_channels, outch, config)
         if config.weight:
             with torch.no_grad():
@@ -31,12 +40,11 @@ class CombineAutoencoder(nn.Module):
         return x
     def forward(self, x):
         x = self.conv1(x.type(torch.float32))
-        # x = F.relu(self.dropout1(self.batchnorm1(x)))
-        x = F.relu(self.dropout1(x))
+        x = F.relu(self.dropout1(self.batchnorm1(x)))
+        # x = F.relu(self.dropout1(x))
         x = self.conv2(x)
-        # x = F.relu(self.dropout2(self.batchnorm2(x)))
-        x = F.relu(self.dropout2(x))
-
+        x = F.relu(self.dropout2(self.batchnorm2(x)))
+        # x = F.relu(self.dropout2(x))
         x = self.back(x)
         if self.config.feature == 'mel':
             x = self.inverse_mel(x)
@@ -72,14 +80,14 @@ class FCAutoencoder(nn.Module):
         super(FCAutoencoder, self).__init__()
         self.config = config
         # self.conv1 = nn.Conv1d(12,128,kernel_size=3, stride=1, padding=1)
-        self.linear1 = nn.Linear(inputs,256)
+        self.linear1 = nn.Linear(inputs * inch,256)
         self.linear2 = nn.Linear(256, 128)
         self.linear3 = nn.Linear(128, 64)
         self.linear4 = nn.Linear(64, 30)
         self.linear5 = nn.Linear(30, 64)
         self.linear6 = nn.Linear(64, 128)
         self.linear7 = nn.Linear(128, 256)
-        self.linear8 = nn.Linear(256, outputs)
+        self.linear8 = nn.Linear(256, outputs * outch)
         if config.weight:
             layers = dict(self._modules)
             for layer in layers.keys():
@@ -87,6 +95,7 @@ class FCAutoencoder(nn.Module):
                 la = torch.nn.Parameter(torch.zeros_like(la) + 1e-5)
 
     def forward(self, x):
+        x = torch.reshape(x, (x.size(0), -1))
         if self.config.relu:
             x = F.relu(self.linear1(x))
             x = F.relu(self.linear2(x))
@@ -103,6 +112,7 @@ class FCAutoencoder(nn.Module):
             x = self.linear5(x)
             x = self.linear6(x)
             x = self.linear7(x)
-        out = self.linear8(x).transpose(1,2)
-        # out = torch.reshape(out, (out.size(0), -1, 8))
+        # out = self.linear8(x).transpose(1,2)
+        out = self.linear8(x)
+        out = torch.reshape(out, (out.size(0), -1, 8))
         return out.type(torch.double)   

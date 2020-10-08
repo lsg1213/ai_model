@@ -28,6 +28,7 @@ args.add_argument('--weight', action='store_true')
 args.add_argument('--relu', action='store_true')
 args.add_argument('--eval', action='store_true')
 args.add_argument('--future', action='store_true')
+args.add_argument('--diff', action='store_true')
 args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
 args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel'])
 args.add_argument('--n_mels', type=int, default=160)
@@ -60,6 +61,8 @@ def main(config):
             name += '_relu'
         if config.future:
             name += '_future'
+        if config.diff:
+            name += '_diff'
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
@@ -122,33 +125,40 @@ def main(config):
     
     model.to(device)
     for epoch in range(startepoch, EPOCH):
-        train_loss = []
+        train_loss = 0.
         model.train()
         
         with tqdm(train_loader) as pbar:
             for index, (accel, sound) in enumerate(pbar):
+        # for index, (accel, sound) in enumerate(train_loader):
                 accel = accel.to(device).type(torch.float64)
                 sound = sound.to(device).type(torch.float64)
                 optimizer.zero_grad()
                 y = model(accel)
-                if config.mode == 'ts_S':
-                    y_p = Conv_S(y, transfer_f, device)
-                elif config.mode == 'sj_S':
+                if config.mode == 'sj_S':
                     y_p = conv_with_S(y, transfer_f, config)
                 else:
                     y_p = y
-
                 loss = criterion(y_p.type(sound.dtype), sound)
-                loss.backward()
+                if y_p.size(1) <= 1:
+                    raise ValueError('Cannot use difference value for loss')
+                if config.diff:
+                    diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
+                    total_loss = loss + diff_loss
+                else:
+                    total_loss = loss
+                total_loss.backward()
                 optimizer.step()
                 # _, preds = torch.max(y_p, 1)
-                train_loss.append(loss.item())
+                train_loss += total_loss.item()
                 # train_acc += torch.sum(preds == sound.data)
                 # pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
-                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
-            train_loss = np.mean(train_loss)
+                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{train_loss / (index + 1):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
+            train_loss /= len(train_loader)
+        print(f'{epoch}, loss: {train_loss}\nvalue')
+        print(f'{y_p[0][0]},\n{sound[0][0]}')
 
-        val_loss = []
+        val_loss = 0.
         model.eval()
         with torch.no_grad():
             with tqdm(val_loader) as pbar:
@@ -165,10 +175,12 @@ def main(config):
                         y_p = y
 
                     loss = criterion(y_p, sound)
+                    diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
                     # _, preds = torch.max(y_p, 1)
-                    val_loss.append(loss.item())
-                    pbar.set_postfix(epoch=f'{epoch}', val_loss=f'{np.mean(val_loss):0.4}')
-                val_loss = np.mean(val_loss)
+                    total_loss = loss.item() + diff_loss.item()
+                    val_loss += total_loss
+                    pbar.set_postfix(epoch=f'{epoch}', val_loss=f'{val_loss / (index + 1):0.4}')
+                val_loss /= len(val_loader)
         writer.add_scalar('train/train_loss', train_loss, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
         lr_schedule.step(val_loss)
