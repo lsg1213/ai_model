@@ -1,8 +1,9 @@
-import torch, torchaudio, pdb
+import torch, torchaudio, pdb, librosa
 from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import torch.nn.functional as F
 from scipy.io.wavfile import write
+import concurrent.futures as fu
 
 def data_spread(data, data_length, config):
     '''
@@ -27,19 +28,9 @@ class makeDataset(Dataset):
 
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
-        if config.feature == 'mel':
-            pass
-            # if type(accel) == list:
-            #     melaccel = torch.from_numpy(np.concatenate(accel)).type(torch.float)
-            #     tomel = torchaudio.transforms.MelSpectrogram(sample_rate=8192, n_fft=config.b + config.len, hop_length=config.b, n_mels=config.n_mels)
-            #     self.accel = torch.cat([tomel(melaccel[:,i]).unsqueeze(0) for i in range(melaccel.shape[-1])]).type(torch.double).transpose(0,2)
-            # if type(sound) == list:
-            #     self.sound = data_spread(sound, self.data_length)
-        elif config.feature == 'wav':
-            self.accel = data_spread(accel, self.data_length, config)
-            self.sound = data_spread(sound, self.data_length, config)
-        else:
-            raise ValueError(f'invalid feature {config.feature}')
+        
+        self.accel = data_spread(accel, self.data_length, config)
+        self.sound = data_spread(sound, self.data_length, config)
         self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
         if train:
             self.shuffle()
@@ -55,23 +46,37 @@ class makeDataset(Dataset):
 
     def __getitem__(self, idx):
         idx = self.perm[idx]
+        index = idx + self.config.latency
+        accel = self.accel[idx:idx + self.config.b + self.config.len]
+        if self.config.future:
+            sound = self.sound[index + self.config.len:index + 2 * self.config.len]
+        else:
+            sound = self.sound[index:index + self.config.len]
+
         if self.config.feature == 'wav':
-            index = idx + self.config.latency
-            accel = self.accel[idx:idx + self.config.b + self.config.len]
-            if self.config.future:
-                sound = self.sound[index + self.config.len:index + 2 * self.config.len]
-            else:
-                sound = self.sound[index:index + self.config.len]
             return accel.transpose(0,1), sound
         elif self.config.feature == 'mel':
+            # (frames, 12)
+            return wavtomel(accel, self.config).transpose(0,1), sound
+        elif self.config.feature == 'mfcc':
+            # (frames, 12)
             pass
-        
-
 
 def padding(signal, Ls):
     _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
-    
+
+def wavtomel(wav, config):
+    # (frames, 12)
+    def _wavtomel(_wav):
+        # (frames) to (mels, frames)
+        return librosa.feature.melspectrogram(_wav, sr=config.sr, n_mels=config.nmels, n_fft=config.nfft, hop_length=config.nfft // 2 if config.nfft // 2 != 0 else 1, win_length=config.nfft)
+
+    with fu.ThreadPoolExecutor() as pool:
+        data = torch.tensor(list(pool.map(_wavtomel, wav.transpose(0,1).numpy())), dtype=wav.dtype, device=wav.device)
+
+    return data    
+
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M)
     if config.ema:

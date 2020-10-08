@@ -29,16 +29,18 @@ args.add_argument('--relu', action='store_true')
 args.add_argument('--eval', action='store_true')
 args.add_argument('--future', action='store_true')
 args.add_argument('--diff', action='store_true')
+args.add_argument('--sr', type=int, default=8192)
 args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
-args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel'])
-args.add_argument('--n_mels', type=int, default=160)
+args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel', 'mfcc'])
+args.add_argument('--nmels', type=int, default=80)
+args.add_argument('--nfft', type=int, default=512)
 
 
 def main(config):
     os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     
-    SR = 8192
+    SR = config.sr
     WINDOW_SIZE = 500 # us
     data_length = config.len
     BATCH_SIZE = config.batch
@@ -210,5 +212,8 @@ def main(config):
 
 if __name__ == "__main__":
     config = args.parse_args()
+    if config.nfft > config.b + config.len:
+        print(f'nfft is too big to use, change nfft to {config.b + config.len}')
+        config.nfft = config.b+config.len
     main(config)
     

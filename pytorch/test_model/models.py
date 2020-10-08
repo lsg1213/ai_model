@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
-
+from math import floor
 class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
@@ -14,18 +14,23 @@ class CombineAutoencoder(nn.Module):
         # self.conv2 = nn.Conv1d(128, 8, 1)
         # self.batchnorm2 = nn.BatchNorm1d(8)
         # self.dropout2 = nn.Dropout(p=0.2)
-        
-        self.conv1 = nn.Conv1d(inch, 64, 3, padding=1)
-        self.batchnorm1 = nn.BatchNorm1d(64)
+        if config.feature == 'mel':
+            self.conv1 = nn.Conv2d(inch, 64, 3, padding=1)
+            self.batchnorm1 = nn.BatchNorm2d(64)
+            self.conv2 = nn.Conv2d(64, 128, 3, padding=1)
+            self.batchnorm2 = nn.BatchNorm2d(128)
+        elif config.feature == 'wav':
+            self.conv1 = nn.Conv1d(inch, 64, 3, padding=1)
+            self.batchnorm1 = nn.BatchNorm1d(64)
+            self.conv2 = nn.Conv1d(64, 128, 3, padding=1)
+            self.batchnorm2 = nn.BatchNorm1d(128)
         self.dropout1 = nn.Dropout(p=0.2)
-        self.conv2 = nn.Conv1d(64, 128, 3, padding=1)
-        self.batchnorm2 = nn.BatchNorm1d(128)
         self.dropout2 = nn.Dropout(p=0.2)
 
         if config.feature == 'mel':
-            outputs = config.n_mels
+            outputs = config.nmels
         # self.back = FCAutoencoder()
-        self.back = FCAutoencoder((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1, config.len, self.conv2.out_channels, outch, config)
+        self.back = FCAutoencoder(((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1) * (floor((config.b + config.len) / (config.nfft // 2)) + 1), config.len, self.conv2.out_channels, outch, config)
         if config.weight:
             with torch.no_grad():
                 self.conv1.weight = torch.nn.Parameter(torch.zeros_like(self.conv1.weight) + 1e-5)
@@ -114,5 +119,6 @@ class FCAutoencoder(nn.Module):
             x = self.linear7(x)
         # out = self.linear8(x).transpose(1,2)
         out = self.linear8(x)
+        pdb.set_trace()
         out = torch.reshape(out, (out.size(0), -1, 8))
         return out.type(torch.double)   
