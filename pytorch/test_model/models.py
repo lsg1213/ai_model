@@ -3,6 +3,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
+
+def cal_outputs_conv(inputs, layer):
+    if len(layer.kernel_size) == 1:
+        return (inputs + 2 * layer.padding[0] - layer.dilation[0] * (layer.kernel_size[0] - 1) - 1) // layer.stride[0] + 1
+    elif len(layer.kernel_size) == 2:
+        
+        return ((inputs[0] + 2 * layer.padding[0] - layer.dilation[0] * (layer.kernel_size[0] - 1) - 1) // layer.stride[0] + 1,
+                (inputs[1] + 2 * layer.padding[1] - layer.dilation[1] * (layer.kernel_size[1] - 1) - 1) // layer.stride[1] + 1)
 class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
@@ -26,12 +34,13 @@ class CombineAutoencoder(nn.Module):
         self.dropout1 = nn.Dropout(p=0.2)
         self.dropout2 = nn.Dropout(p=0.2)
 
-        if config.feature == 'mel':
-            outputs = config.nmels
-        # self.back = FCAutoencoder()
-            self.back = FCAutoencoder(((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1) * ((config.b + config.len) // (config.nfft // 2) + 1), config.len, self.conv2.out_channels, outch, config)
-        elif config.feature == 'wav':
-            self.back = FCAutoencoder((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1, config.len, self.conv2.out_channels, outch, config)
+        _inputs = cal_outputs_conv(cal_outputs_conv(inputs, self.conv1), self.conv2)
+        if config.feature == 'wav':
+            self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, outch, config)
+        elif config.feature == 'mel':
+            # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(self.conv2 filter number), outch=(frames)
+            self.back = FCAutoencoder(_inputs, (config.nfft, 8), self.conv2.out_channels, outch, config)
+
         if config.weight:
             with torch.no_grad():
                 self.conv1.weight = torch.nn.Parameter(torch.zeros_like(self.conv1.weight) + 1e-5)
@@ -77,7 +86,13 @@ class FCAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(FCAutoencoder, self).__init__()
         self.config = config
-        # self.conv1 = nn.Conv1d(12,128,kernel_size=3, stride=1, padding=1)
+        if len(inputs) > 1:
+            _in = 1
+            for i in inputs:
+                _in *= i
+            inputs = _in
+        # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(self.conv2 filter number), outch=(frames)
+        # mel: (batch, 128, frames, 12)
         self.linear1 = nn.Linear(inputs * inch,256)
         self.linear2 = nn.Linear(256, 128)
         self.linear3 = nn.Linear(128, 64)
@@ -88,7 +103,7 @@ class FCAutoencoder(nn.Module):
         if config.feature == 'wav':
             self.linear8 = nn.Linear(256, outputs * outch)
         elif config.feature == 'mel':
-            self.linear8 = nn.Linear(256, outputs * outch)
+            self.linear8 = nn.Linear(256, outputs[0] * outputs[1] * outch)
             # self.linear8 = nn.Linear(256, self.config.nmels * 8 * (self.config.len // (self.config.nfft // 2) + 1))
 
         if config.weight:
@@ -122,5 +137,6 @@ class FCAutoencoder(nn.Module):
         elif self.config.feature == 'mel':
             # make mel output
             # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
-            out = torch.reshape(out, (out.size(0), -1, 8))
+            out = torch.reshape(out, (out.size(0), -1, self.config.nfft, 8))
+
         return out.type(torch.double)   

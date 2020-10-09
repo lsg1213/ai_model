@@ -29,8 +29,12 @@ class makeDataset(Dataset):
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         
-        self.accel = data_spread(accel, self.data_length, config)
-        self.sound = data_spread(sound, self.data_length, config)
+        if config.feature == 'wav':
+            self.accel = data_spread(accel, self.data_length, config)
+            self.sound = data_spread(sound, self.data_length, config)
+        else:
+            self.accel = accel
+            self.sound = sound
         self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
         if train:
             self.shuffle()
@@ -52,52 +56,35 @@ class makeDataset(Dataset):
             sound = self.sound[index + self.config.len:index + 2 * self.config.len]
         else:
             sound = self.sound[index:index + self.config.len]
-
-        if self.config.feature == 'wav':
-            return accel.transpose(0,1), sound
-        elif self.config.feature == 'mel':
-            # (frames, 12)
-            # return wavtomel(accel, self.config).transpose(0,1), wavtomel(sound, self.config).transpose(0,1)
-            return wavtomel(accel, self.config).transpose(0,1), sound
-        elif self.config.feature == 'mfcc':
-            # (frames, 12)
-            pass
+        
+        return accel.transpose(0,1), sound
 
 def padding(signal, Ls):
     _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
+ 
 
-def wavtomel(wav, config):
-    # (frames, 12)
-    def _wavtomel(_wav):
-        # (frames) to (mels, frames)
-        return librosa.feature.melspectrogram(_wav, sr=config.sr, n_mels=config.nmels, n_fft=config.nfft, hop_length=config.nfft // 2 if config.nfft // 2 != 0 else 1, win_length=config.nfft)
+def meltowav(mel, config):
+    # mel shape = (batch, frames, window_size==nfft, channel=8)
+    pdb.set_trace()
+
+    if len(mel.shape) == 4:
+        mel = mel.mel.permute((0,3,1,2))  # (batch, 8, frames, window_size)
+    else:
+        raise ValueError(f'mel dimension must be 4, now {len(mel.shape)}')
     
-    if len(wav.shape) == 2:
+    def _meltowav(mel):
+        # (nmels, frames)
+        return librosa.feature.inverse.mel_to_audio(mel, sr=config.sr, n_fft=config.nfft, hop_length=config.nfft // 2, win_length=config.nfft)
+    wav = []
+    for idx, data in enumerate(mel):
+        #(nmels, frames, 8)
+        data = data.permute((2,0,1)) #(8, nmels, frames)
         with fu.ThreadPoolExecutor() as pool:
-            data = torch.tensor(list(pool.map(_wavtomel, wav.transpose(0,1).numpy())), dtype=wav.dtype, device=wav.device)
-
-    return data    
-
-# def meltowav(mel, config):
-#     # mel shape = (batch, nmels, 8, frames)
-#     if len(mel.shape) == 4:
-#         mel = mel.transpose(2,3)  # (batch, nmels, frames, 8)
-#     else:
-#         raise ValueError(f'mel dimension must be 4, now {len(mel.shape)}')
-    
-#     def _meltowav(mel):
-#         # (nmels, frames)
-#         return librosa.feature.inverse.mel_to_audio(mel, sr=config.sr, n_fft=config.nfft, hop_length=config.nfft // 2, win_length=config.nfft)
-#     wav = []
-#     for idx, data in enumerate(mel):
-#         #(nmels, frames, 8)
-#         data = data.permute((2,0,1)) #(8, nmels, frames)
-#         with fu.ThreadPoolExecutor() as pool:
-#             _data = list(pool.map(_meltowav, data.numpy()))
-#         wav.append(torch.tensor(_data, dtype=data.dtype, device=data.device))
-#     pdb.set_trace()
-#     return torch.cat(wav)
+            _data = list(pool.map(_meltowav, data.numpy()))
+        wav.append(torch.tensor(_data, dtype=data.dtype, device=data.device))
+    pdb.set_trace()
+    return torch.cat(wav)
 
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M)

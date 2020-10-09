@@ -29,7 +29,7 @@ if not os.path.exists(feat_path):
 
 def _transform(config):
     if config.feature == 'mel':
-        return torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft//2)
+        return torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft//2, n_mels=config.nmels)
 
 def seqtowin(seq, config):
     windows = []
