@@ -43,21 +43,26 @@ class makeDataset(Dataset):
             self.len -= self.config.len
     
     def shuffle(self):
-        self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
+        if self.config.feature == 'wav':
+            self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
+        elif self.config.feature == 'mel':
+            self.perm = torch.arange
 
     def __len__(self):
         return self.len
 
     def __getitem__(self, idx):
         idx = self.perm[idx]
-        index = idx + self.config.latency
-        accel = self.accel[idx:idx + self.config.b + self.config.len]
-        if self.config.future:
-            sound = self.sound[index + self.config.len:index + 2 * self.config.len]
-        else:
-            sound = self.sound[index:index + self.config.len]
-        
-        return accel.transpose(0,1), sound
+        # mel이 여기에서 데이터 뿌리는 거부터 잘못됨
+        if self.config.feature == 'wav':
+            index = idx + self.config.latency
+            accel = self.accel[idx:idx + self.config.b + self.config.len]
+            if self.config.future:
+                sound = self.sound[index + self.config.len:index + 2 * self.config.len]
+            else:
+                sound = self.sound[index:index + self.config.len]
+            
+            return accel.transpose(0,1), sound
 
 def padding(signal, Ls):
     _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
@@ -65,26 +70,24 @@ def padding(signal, Ls):
  
 
 def meltowav(mel, config):
-    # mel shape = (batch, frames, window_size==nfft, channel=8)
-    pdb.set_trace()
+    # mel shape = (batch, frames, n_mels, channel=8)
 
     if len(mel.shape) == 4:
-        mel = mel.mel.permute((0,3,1,2))  # (batch, 8, frames, window_size)
+        mel = mel.permute((0,3,2,1))  # (batch, 8, n_mels, frames)
     else:
         raise ValueError(f'mel dimension must be 4, now {len(mel.shape)}')
-    
-    def _meltowav(mel):
-        # (nmels, frames)
-        return librosa.feature.inverse.mel_to_audio(mel, sr=config.sr, n_fft=config.nfft, hop_length=config.nfft // 2, win_length=config.nfft)
-    wav = []
-    for idx, data in enumerate(mel):
-        #(nmels, frames, 8)
-        data = data.permute((2,0,1)) #(8, nmels, frames)
-        with fu.ThreadPoolExecutor() as pool:
-            _data = list(pool.map(_meltowav, data.numpy()))
-        wav.append(torch.tensor(_data, dtype=data.dtype, device=data.device))
     pdb.set_trace()
-    return torch.cat(wav)
+    mid = torchaudio.transforms.InverseMelScale(40, 128, sample_rate=8192)(mel)
+    wav = torchaudio.transforms.GriffinLim(40)(mid)
+    return wav
+
+if __name__ == "__main__":
+    wav = torch.rand((16,8,200), dtype=torch.float32)
+    mel = torchaudio.transforms.MelSpectrogram(n_fft=40)
+    ab = mel(wav)
+    _wav = meltowav(ab.transpose(1,3), None)
+    pdb.set_trace()
+
 
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M)
@@ -111,7 +114,6 @@ import matplotlib.pyplot as plt
 #    an A-weighting filter for arbitary frequencies.
 #
 # Author: Douglas R. Lanman, 11/21/05
-
 # Define filter coefficients.
 # See: http://www.beis.de/Elektronik/AudioMeasure/
 # WeightingFilters.html#A-Weighting

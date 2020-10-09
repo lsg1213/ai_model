@@ -34,11 +34,11 @@ class CombineAutoencoder(nn.Module):
         self.dropout1 = nn.Dropout(p=0.2)
         self.dropout2 = nn.Dropout(p=0.2)
 
-        _inputs = cal_outputs_conv(cal_outputs_conv(inputs, self.conv1), self.conv2)
+        _inputs = cal_outputs_conv(cal_outputs_conv(inputs if len(inputs) != 1 else inputs[0], self.conv1), self.conv2)
         if config.feature == 'wav':
-            self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, outch, config)
+            self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, outputs[0], config)
         elif config.feature == 'mel':
-            # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(self.conv2 filter number), outch=(frames)
+            # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(self.conv2 filter number), outch=(n_mels)
             self.back = FCAutoencoder(_inputs, (config.nfft, 8), self.conv2.out_channels, outch, config)
 
         if config.weight:
@@ -86,12 +86,13 @@ class FCAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(FCAutoencoder, self).__init__()
         self.config = config
-        if len(inputs) > 1:
-            _in = 1
-            for i in inputs:
-                _in *= i
-            inputs = _in
-        # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(self.conv2 filter number), outch=(frames)
+        if type(inputs) != int:
+            if len(inputs) > 1:
+                _in = 1
+                for i in inputs:
+                    _in *= i
+                inputs = _in
+        # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(self.conv2 filter number), outch=(n_mels)
         # mel: (batch, 128, frames, 12)
         self.linear1 = nn.Linear(inputs * inch,256)
         self.linear2 = nn.Linear(256, 128)
@@ -137,6 +138,6 @@ class FCAutoencoder(nn.Module):
         elif self.config.feature == 'mel':
             # make mel output
             # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
-            out = torch.reshape(out, (out.size(0), -1, self.config.nfft, 8))
+            out = torch.reshape(out, (out.size(0), -1, self.config.nmels, 8))
 
         return out.type(torch.double)   
