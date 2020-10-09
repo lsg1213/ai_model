@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
-from math import floor
 class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
@@ -30,19 +29,15 @@ class CombineAutoencoder(nn.Module):
         if config.feature == 'mel':
             outputs = config.nmels
         # self.back = FCAutoencoder()
-        self.back = FCAutoencoder(((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1) * (floor((config.b + config.len) / (config.nfft // 2)) + 1), config.len, self.conv2.out_channels, outch, config)
+            self.back = FCAutoencoder(((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1) * ((config.b + config.len) // (config.nfft // 2) + 1), config.len, self.conv2.out_channels, outch, config)
+        elif config.feature == 'wav':
+            self.back = FCAutoencoder((inputs + 2 * self.conv1.padding[0] - self.conv1.dilation[0] * (self.conv1.kernel_size[0] - 1) - 1) // self.conv1.stride[0] + 1, config.len, self.conv2.out_channels, outch, config)
         if config.weight:
             with torch.no_grad():
                 self.conv1.weight = torch.nn.Parameter(torch.zeros_like(self.conv1.weight) + 1e-5)
                 self.conv2.weight = torch.nn.Parameter(torch.zeros_like(self.conv2.weight) + 1e-5)
 
-    def inverse_mel(self, x):
-        shape = x.size()
-        x = x.clone().cpu().detach()
-        x = torchaudio.transforms.InverseMelScale(self.config.b + self.config.len,n_mels=160, sample_rate=8192).double()(x)
-        
-        # x = torchaudio.functional.istft()
-        return x
+    
     def forward(self, x):
         x = self.conv1(x.type(torch.float32))
         x = F.relu(self.dropout1(self.batchnorm1(x)))
@@ -51,8 +46,6 @@ class CombineAutoencoder(nn.Module):
         x = F.relu(self.dropout2(self.batchnorm2(x)))
         # x = F.relu(self.dropout2(x))
         x = self.back(x)
-        if self.config.feature == 'mel':
-            x = self.inverse_mel(x)
         return x
 
 class CNN(nn.Module):
@@ -92,7 +85,12 @@ class FCAutoencoder(nn.Module):
         self.linear5 = nn.Linear(30, 64)
         self.linear6 = nn.Linear(64, 128)
         self.linear7 = nn.Linear(128, 256)
-        self.linear8 = nn.Linear(256, outputs * outch)
+        if config.feature == 'wav':
+            self.linear8 = nn.Linear(256, outputs * outch)
+        elif config.feature == 'mel':
+            self.linear8 = nn.Linear(256, outputs * outch)
+            # self.linear8 = nn.Linear(256, self.config.nmels * 8 * (self.config.len // (self.config.nfft // 2) + 1))
+
         if config.weight:
             layers = dict(self._modules)
             for layer in layers.keys():
@@ -119,6 +117,10 @@ class FCAutoencoder(nn.Module):
             x = self.linear7(x)
         # out = self.linear8(x).transpose(1,2)
         out = self.linear8(x)
-        pdb.set_trace()
-        out = torch.reshape(out, (out.size(0), -1, 8))
+        if self.config.feature == 'wav':
+            out = torch.reshape(out, (out.size(0), -1, 8))
+        elif self.config.feature == 'mel':
+            # make mel output
+            # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
+            out = torch.reshape(out, (out.size(0), -1, 8))
         return out.type(torch.double)   

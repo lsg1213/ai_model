@@ -1,4 +1,4 @@
-import torch, pickle, os, argparse, pdb
+import torch, pickle, os, argparse, pdb, librosa
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
@@ -10,6 +10,7 @@ from utils import *
 from torchsummary import summary
 from glob import glob
 from pytorch_model_summary import summary
+import concurrent.futures as fu
 args = argparse.ArgumentParser()
 args.add_argument('--lr', type=float, default=0.001)
 args.add_argument('--gpus', type=str, default='0')
@@ -54,7 +55,10 @@ def main(config):
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
-        name = f'{config.model}_{config.mode}_b{config.b}_d{data_length}_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}_feature{config.feature}'
+        name = f'{config.model}_{config.mode}_b{config.b}_d{data_length}_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+        name += f'_feature{config.feature}'
+        if config.feature == 'mel':
+            name += f'_nfft{config.nfft}'
         if config.ema:
             name += '_ema'
         if config.weight:
@@ -97,8 +101,8 @@ def main(config):
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
     
 
-    criterion = nn.MSELoss()
-    # criterion = nn.SmoothL1Loss()
+    # criterion = nn.MSELoss()
+    criterion = nn.SmoothL1Loss()
     if config.opt == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     elif config.opt == 'sgd':
@@ -106,7 +110,7 @@ def main(config):
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
     # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
-    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=False)
+    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
     startepoch = 0
     min_loss = 10000000000.0
     earlystep = 0
@@ -136,7 +140,11 @@ def main(config):
                 accel = accel.to(device).type(torch.float64)
                 sound = sound.to(device).type(torch.float64)
                 optimizer.zero_grad()
+                sound = sound.to(device)
                 y = model(accel)
+                # if config.feature == 'mel':
+                #     y = meltowav(y, config)
+
                 if config.mode == 'sj_S':
                     y_p = conv_with_S(y, transfer_f, config)
                 else:
@@ -166,12 +174,16 @@ def main(config):
             with tqdm(val_loader) as pbar:
                 for index, (accel, sound) in enumerate(pbar):
                     accel = accel.to(device)
+                    sound = sound.type(torch.float64)
+                    
+                    if config.feature == 'mel':
+                        sound = wavtomel(sound, config)
                     sound = sound.to(device)
                     optimizer.zero_grad()
                     y = model(accel)
-                    if config.mode == 'ts_S':
-                        y_p = Conv_S(y, transfer_f, device)
-                    elif config.mode == 'sj_S':
+                    if config.feature == 'mel':
+                        y = meltowav(y, config)
+                    if config.mode == 'sj_S':
                         y_p = conv_with_S(y, transfer_f, config)
                     else:
                         y_p = y
@@ -203,7 +215,7 @@ def main(config):
             min_loss = val_loss
         else:
             earlystep += 1
-            if earlystep == 5:
+            if earlystep == 3:
                 print('Early stop!')
                 break
     print(name)
@@ -212,8 +224,8 @@ def main(config):
 
 if __name__ == "__main__":
     config = args.parse_args()
-    if config.nfft > config.b + config.len:
-        print(f'nfft is too big to use, change nfft to {config.b + config.len}')
-        config.nfft = config.b+config.len
+    if config.nfft > config.len:
+        print(f'nfft is too big to use, change nfft to {config.len}')
+        config.nfft = config.len
     main(config)
     

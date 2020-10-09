@@ -57,6 +57,7 @@ class makeDataset(Dataset):
             return accel.transpose(0,1), sound
         elif self.config.feature == 'mel':
             # (frames, 12)
+            # return wavtomel(accel, self.config).transpose(0,1), wavtomel(sound, self.config).transpose(0,1)
             return wavtomel(accel, self.config).transpose(0,1), sound
         elif self.config.feature == 'mfcc':
             # (frames, 12)
@@ -71,11 +72,32 @@ def wavtomel(wav, config):
     def _wavtomel(_wav):
         # (frames) to (mels, frames)
         return librosa.feature.melspectrogram(_wav, sr=config.sr, n_mels=config.nmels, n_fft=config.nfft, hop_length=config.nfft // 2 if config.nfft // 2 != 0 else 1, win_length=config.nfft)
-
-    with fu.ThreadPoolExecutor() as pool:
-        data = torch.tensor(list(pool.map(_wavtomel, wav.transpose(0,1).numpy())), dtype=wav.dtype, device=wav.device)
+    
+    if len(wav.shape) == 2:
+        with fu.ThreadPoolExecutor() as pool:
+            data = torch.tensor(list(pool.map(_wavtomel, wav.transpose(0,1).numpy())), dtype=wav.dtype, device=wav.device)
 
     return data    
+
+# def meltowav(mel, config):
+#     # mel shape = (batch, nmels, 8, frames)
+#     if len(mel.shape) == 4:
+#         mel = mel.transpose(2,3)  # (batch, nmels, frames, 8)
+#     else:
+#         raise ValueError(f'mel dimension must be 4, now {len(mel.shape)}')
+    
+#     def _meltowav(mel):
+#         # (nmels, frames)
+#         return librosa.feature.inverse.mel_to_audio(mel, sr=config.sr, n_fft=config.nfft, hop_length=config.nfft // 2, win_length=config.nfft)
+#     wav = []
+#     for idx, data in enumerate(mel):
+#         #(nmels, frames, 8)
+#         data = data.permute((2,0,1)) #(8, nmels, frames)
+#         with fu.ThreadPoolExecutor() as pool:
+#             _data = list(pool.map(_meltowav, data.numpy()))
+#         wav.append(torch.tensor(_data, dtype=data.dtype, device=data.device))
+#     pdb.set_trace()
+#     return torch.cat(wav)
 
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M)
