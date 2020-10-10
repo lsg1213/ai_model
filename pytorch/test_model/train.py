@@ -87,17 +87,17 @@ def main(config):
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
     transfer_f = torch.from_numpy(transfer_f).to(device)
     transfer_f.requires_grad = False
-    if config.feature == 'wav':
+    if config.feature in ('wav', 'mel'):
         accel_raw_data = pickle.load(open(os.path.join(data_path,'stationary_accel_data.pickle'),'rb'))
         sound_raw_data = pickle.load(open(os.path.join(data_path,'stationary_sound_data.pickle'),'rb'))
-    elif config.feature == 'mel':
-        data_path = os.path.join(data_path, f'{config.feature}_{config.nfft}_{config.nmels}')
-        if not os.path.exists(data_path):
-            raise ValueError('directory is wrong for to get data')
-        accel_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*accel*.joblib'))]) # (frames, nmels, 12)
-        sound_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*sound*.joblib'))]) # (frames, windowsize, 8)
-        if accel_raw_data.shape[0] != sound_raw_data.shape[0]:
-            raise ValueError(f'length of accel and sound data is not matched, {accel_raw_data.shape}, {sound_raw_data.shape}')
+    # elif config.feature == 'mel':
+    #     data_path = os.path.join(data_path, f'{config.feature}_{config.nfft}_{config.nmels}')
+    #     if not os.path.exists(data_path):
+    #         raise ValueError('directory is wrong for to get data')
+    #     accel_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*accel*.joblib'))]) # (frames, nmels, 12)
+    #     sound_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*sound*.joblib'))]) # (frames, windowsize, 8)
+    #     if accel_raw_data.shape[0] != sound_raw_data.shape[0]:
+    #         raise ValueError(f'length of accel and sound data is not matched, {accel_raw_data.shape}, {sound_raw_data.shape}')
 
     
 
@@ -108,7 +108,7 @@ def main(config):
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
 
     # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(2), outch=(frames)
-    model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
+    model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
@@ -155,17 +155,17 @@ def main(config):
                 optimizer.zero_grad()
                 sound = sound.to(device)
                 y = model(accel)
-                if config.feature == 'mel':
-                    y = meltowav(y, config)
+                # if config.feature == 'mel':
+                #     y = meltowav(y, config)
 
                 if config.mode == 'sj_S':
                     y_p = conv_with_S(y, transfer_f, config)
                 else:
                     y_p = y
                 loss = criterion(y_p.type(sound.dtype), sound)
-                if y_p.size(1) <= 1:
-                    raise ValueError('Cannot use difference value for loss')
                 if config.diff:
+                    if y_p.size(1) <= 1:
+                        raise ValueError('Cannot use difference value for loss')
                     diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
                     total_loss = loss + diff_loss
                 else:
@@ -194,8 +194,8 @@ def main(config):
                     sound = sound.to(device)
                     optimizer.zero_grad()
                     y = model(accel)
-                    if config.feature == 'mel':
-                        y = meltowav(y, config)
+                    # if config.feature == 'mel':
+                    #     y = meltowav(y, config)
                     if config.mode == 'sj_S':
                         y_p = conv_with_S(y, transfer_f, config)
                     else:
@@ -238,5 +238,8 @@ def main(config):
 
 if __name__ == "__main__":
     config = args.parse_args()
+    if config.nfft > config.len + config.b:
+        config.nfft = config.len + config.b
+        print(f'nfft is too big to use, change nfft to {config.len + config.b}')
     main(config)
     
