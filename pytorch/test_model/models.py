@@ -37,11 +37,11 @@ class CombineAutoencoder(nn.Module):
         self.dropout2 = nn.Dropout(p=0.2)
         _inputs = cal_outputs_conv(cal_outputs_conv((inputs), self.conv1), self.conv2)
 
-        if config.feature in ('wav', 'mel'):
+        if config.feature == 'wav':
             self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, outputs[0], config)
         elif config.feature == 'mel':
-            # mel: inputs=(frames, 12), outputs=(nmels, 8), inch=(self.conv2 filter number), outch=(1)
-            self.back = FCAutoencoder(_inputs, (config.nmels, 8), self.conv2.out_channels, 1, config)
+            # mel: inputs=(frames, 12), outputs=(out_frames), inch=(self.conv2 filter number), outch=(8)
+            self.back = FCAutoencoder(_inputs, config.nfft, self.conv2.out_channels, 8, config)
 
         if config.weight:
             with torch.no_grad():
@@ -96,19 +96,19 @@ class FCAutoencoder(nn.Module):
                 for i in inputs:
                     _in *= i
                 inputs = _in
-        # mel: inputs=(frames, 12), outputs=(nmels, 8), inch=(self.conv2 filter number), outch=(1)
+        # mel: inputs=(frames, 12), outputs=(out_frames), inch=(self.conv2 filter number), outch=(8)
         # mel: (batch, 128, n_mels, 12)
-        self.linear1 = nn.Linear(inputs * inch,256)
+        self.linear1 = nn.Linear(inputs * inch, 256)
         self.linear2 = nn.Linear(256, 128)
         self.linear3 = nn.Linear(128, 64)
         self.linear4 = nn.Linear(64, 30)
         self.linear5 = nn.Linear(30, 64)
         self.linear6 = nn.Linear(64, 128)
         self.linear7 = nn.Linear(128, 256)
-        if config.feature in ('wav', 'mel'):
+        if config.feature == 'wav':
             self.linear8 = nn.Linear(256, outputs * outch)
         elif config.feature == 'mel':
-            self.linear8 = nn.Linear(256, outputs[0] * outputs[1] * (outch + 1))
+            self.linear8 = nn.Linear(256, outputs * outch)
             # self.linear8 = nn.Linear(256, self.config.nmels * 8 * (self.config.len // (self.config.nfft // 2) + 1))
 
         if config.weight:
@@ -137,10 +137,10 @@ class FCAutoencoder(nn.Module):
             x = self.linear7(x)
         # out = self.linear8(x).transpose(1,2)
         out = self.linear8(x)
-        if self.config.feature in ('wav', 'mel'):
+        if self.config.feature == 'wav':
             out = torch.reshape(out, (out.size(0), -1, 8))
         elif self.config.feature == 'mel':
             # make mel output
             # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
-            out = torch.reshape(out, (out.size(0), -1, self.config.nmels, 8))
+            out = torch.reshape(out, (out.size(0), self.config.nfft, 8))
         return out.type(torch.double)   
