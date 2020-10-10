@@ -44,9 +44,9 @@ class makeDataset(Dataset):
     
     def shuffle(self):
         if self.config.feature == 'wav':
-            self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
+            self.perm = torch.randperm(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
         elif self.config.feature == 'mel':
-            self.perm = torch.arange
+            self.perm = torch.randperm(len(self.accel) - 1 if self.config.future else len(self.accel))
 
     def __len__(self):
         return self.len
@@ -63,6 +63,18 @@ class makeDataset(Dataset):
                 sound = self.sound[index:index + self.config.len]
             
             return accel.transpose(0,1), sound
+        elif self.config.feature == 'mel':
+            idx = self.perm[idx]
+            if idx != 0:
+                accel = self.accel[idx-1:idx+1].squeeze(0)
+            else:
+                accel = [torch.zeros_like(self.accel[idx]).squeeze(0),self.accel[idx].squeeze(0)]
+
+            if self.config.future:
+                sound = self.sound[idx + 1]
+            else:
+                sound = self.sound[idx]
+            return accel, sound
 
 def padding(signal, Ls):
     _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
@@ -71,22 +83,16 @@ def padding(signal, Ls):
 
 def meltowav(mel, config):
     # mel shape = (batch, frames, n_mels, channel=8)
-
+    pdb.set_trace()
     if len(mel.shape) == 4:
         mel = mel.permute((0,3,2,1))  # (batch, 8, n_mels, frames)
     else:
         raise ValueError(f'mel dimension must be 4, now {len(mel.shape)}')
-    pdb.set_trace()
-    mid = torchaudio.transforms.InverseMelScale(40, 128, sample_rate=8192)(mel)
-    wav = torchaudio.transforms.GriffinLim(40)(mid)
+
+    mid = torchaudio.transforms.InverseMelScale(config.nfft // 2 + 1, config.nmels, sample_rate=config.sr)(mel)
+    wav = torchaudio.transforms.GriffinLim(config.nfft)(mid)
     return wav
 
-if __name__ == "__main__":
-    wav = torch.rand((16,8,200), dtype=torch.float32)
-    mel = torchaudio.transforms.MelSpectrogram(n_fft=40)
-    ab = mel(wav)
-    _wav = meltowav(ab.transpose(1,3), None)
-    pdb.set_trace()
 
 
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):

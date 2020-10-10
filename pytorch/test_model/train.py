@@ -107,8 +107,8 @@ def main(config):
     dataset = makeDataset(accel_raw_data, sound_raw_data, config)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
 
-    # mel: inputs=(frames, 12), outputs=(window_size, 8), inch=(n_mels), outch=(frames)
-    model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
+    # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(2), outch=(frames)
+    model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
@@ -122,8 +122,8 @@ def main(config):
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
-    # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
-    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
+    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+    # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
     startepoch = 0
     min_loss = 10000000000.0
     earlystep = 0
@@ -210,7 +210,8 @@ def main(config):
                 val_loss /= len(val_loader)
         writer.add_scalar('train/train_loss', train_loss, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
-        lr_schedule.step(val_loss)
+        # lr_schedule.step(val_loss)
+        lr_schedule.step()
         torch.save({
             'model': model.state_dict(),
             'epoch': epoch,
