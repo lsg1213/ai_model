@@ -3,7 +3,7 @@ import numpy as np
 from utils import create_folder
 import models
 import tensorflow as tf
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TerminateOnNaN
 import datetime
 import cls_feature_class, cls_data_generator
 from glob import glob
@@ -87,7 +87,7 @@ def get_data(config, train=True):
     
     dataset = tf.data.Dataset.from_tensor_slices((data, label))
     if train:
-        dataset = dataset.repeat().shuffle(buffer_size=1000000)
+        dataset = dataset.repeat(2).shuffle(buffer_size=100000)
         dataset = dataset.batch(config.batch)
         dataset = dataset.prefetch(AUTOTUNE)
     else:
@@ -127,7 +127,7 @@ def main(config):
             TensorBoard(log_dir='tensorboard/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
         ]
 
-    model.fit(trainset, epochs=config.epoch, validation_set=testset, batch_size=config.batch, callbacks=callbacks)
+    model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
 
 
 if __name__ == "__main__":
