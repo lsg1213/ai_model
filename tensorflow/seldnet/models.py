@@ -11,7 +11,7 @@
 # from keras.optimizers import Adam
 # import keras
 # keras.backend.set_image_data_format('channels_first')
-from tensorflow.keras.layers import Bidirectional, Conv2D, MaxPool2D, Input, MaxPool2D, Conv3D, Dense, Activation, Dropout, Reshape, Permute, GRU, BatchNormalization, TimeDistributed
+from tensorflow.keras.layers import Bidirectional, Conv2D, MaxPooling2D, Input, MaxPool2D, Conv3D, Dense, Activation, Dropout, Reshape, Permute, GRU, BatchNormalization, TimeDistributed
 from tensorflow.keras import Model
 from tensorflow.keras.optimizers import Adam
 
