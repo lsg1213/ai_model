@@ -34,7 +34,7 @@ args.add_argument('--sr', type=int, default=8192)
 args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
 args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel', 'mfcc'])
 args.add_argument('--nmels', type=int, default=80)
-args.add_argument('--nfft', type=int, default=512)
+args.add_argument('--nfft', type=int, default=400)
 
 
 def main(config):
@@ -55,7 +55,9 @@ def main(config):
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
-        name = f'{config.model}_{config.mode}_b{config.b}_d{data_length}_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
+        name = f'{config.model}_{config.mode}'
+        name += f'_b{config.b}_d{data_length}' if config.feature == 'wav' else ''
+        name += f'_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
         name += f'_feature{config.feature}'
         if config.feature == 'mel':
             name += f'_nfft{config.nfft}'
@@ -87,17 +89,18 @@ def main(config):
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
     transfer_f = torch.from_numpy(transfer_f).to(device)
     transfer_f.requires_grad = False
-    if config.feature in ('wav', 'mel'):
+    if config.feature == 'wav':
         accel_raw_data = pickle.load(open(os.path.join(data_path,'stationary_accel_data.pickle'),'rb'))
         sound_raw_data = pickle.load(open(os.path.join(data_path,'stationary_sound_data.pickle'),'rb'))
-    # elif config.feature == 'mel':
-    #     data_path = os.path.join(data_path, f'{config.feature}_{config.nfft}_{config.nmels}')
-    #     if not os.path.exists(data_path):
-    #         raise ValueError('directory is wrong for to get data')
-    #     accel_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*accel*.joblib'))]) # (frames, nmels, 12)
-    #     sound_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*sound*.joblib'))]) # (frames, windowsize, 8)
-    #     if accel_raw_data.shape[0] != sound_raw_data.shape[0]:
-    #         raise ValueError(f'length of accel and sound data is not matched, {accel_raw_data.shape}, {sound_raw_data.shape}')
+    elif config.feature == 'mel':
+        data_path = os.path.join(data_path, f'{config.feature}_{config.nfft}_{config.nmels}')
+        if not os.path.exists(data_path):
+            raise ValueError('directory is wrong for to get data')
+        accel_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*accel*.joblib'))]).unsqueeze(1) # (frames, 1, nmels, 12)
+        sound_raw_data = torch.cat([joblib.load(open(i, 'rb')) for i in sorted(glob(data_path+'/*sound*.joblib'))]) # (frames, windowsize, 8)
+
+        if accel_raw_data.shape[0] != sound_raw_data.shape[0]:
+            raise ValueError(f'length of accel and sound data is not matched, {accel_raw_data.shape}, {sound_raw_data.shape}')
 
     
 
@@ -170,6 +173,7 @@ def main(config):
                     total_loss = loss + diff_loss
                 else:
                     total_loss = loss
+                    
                 total_loss.backward()
                 optimizer.step()
                 # _, preds = torch.max(y_p, 1)
@@ -189,8 +193,8 @@ def main(config):
                     accel = accel.to(device)
                     sound = sound.type(torch.float64)
                     
-                    if config.feature == 'mel':
-                        sound = wavtomel(sound, config)
+                    # if config.feature == 'mel':
+                    #     sound = wavtomel(sound, config)
                     sound = sound.to(device)
                     optimizer.zero_grad()
                     y = model(accel)
@@ -238,8 +242,8 @@ def main(config):
 
 if __name__ == "__main__":
     config = args.parse_args()
-    if config.nfft > config.len + config.b:
-        config.nfft = config.len + config.b
-        print(f'nfft is too big to use, change nfft to {config.len + config.b}')
+    # if config.nfft > config.len + config.b:
+    #     config.nfft = config.len + config.b
+    #     print(f'nfft is too big to use, change nfft to {config.len + config.b}')
     main(config)
     

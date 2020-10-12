@@ -29,10 +29,10 @@ class makeDataset(Dataset):
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         
-        if config.feature in ('wav', 'mel'):
+        if config.feature == 'wav':
             self.accel = data_spread(accel, self.data_length, config)
             self.sound = data_spread(sound, self.data_length, config)
-        else:
+        elif config.feature == 'mel':
             self.accel = accel
             self.sound = sound
         self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
@@ -53,20 +53,26 @@ class makeDataset(Dataset):
 
     def __getitem__(self, idx):
         idx = self.perm[idx]
-        # mel이 여기에서 데이터 뿌리는 거부터 잘못
-        index = idx + self.config.latency
-        accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
-        if self.config.future:
-            sound = self.sound[index + self.config.len:index + 2 * self.config.len]
-        else:
-            sound = self.sound[index:index + self.config.len]
-
-        if self.config.feature == 'mel':
-            trans = torchaudio.transforms.MelSpectrogram(sample_rate=self.config.sr, n_fft=self.config.nfft, n_mels=self.config.nmels)
-            # accel = (12, frames)
-            with fu.ThreadPoolExecutor() as pool:
-                accel = list(pool.map(trans, accel.type(torch.float32).unsqueeze(0)))
-            accel = torch.cat(accel).type(self.accel.dtype)
+        if self.config.feature == 'wav':
+            # mel이 여기에서 데이터 뿌리는 거부터 잘못
+            index = idx + self.config.latency
+            accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
+            if self.config.future:
+                sound = self.sound[index + self.config.len:index + 2 * self.config.len]
+            else:
+                sound = self.sound[index:index + self.config.len]
+        elif self.config.feature == 'mel':
+            accel = self.accel[idx:idx + 1].squeeze(0)
+            if self.config.future:
+                sound = self.sound[idx + 1:idx + 2].squeeze(0)
+            else:
+                sound = self.sound[idx:idx + 1].squeeze(0)
+        # if self.config.feature == 'mel':
+        #     trans = torchaudio.transforms.MelSpectrogram(sample_rate=self.config.sr, n_fft=self.config.nfft, n_mels=self.config.nmels)
+        #     # accel = (12, frames)
+        #     with fu.ThreadPoolExecutor() as pool:
+        #         accel = list(pool.map(trans, accel.type(torch.float32).unsqueeze(0)))
+        #     accel = torch.cat(accel).type(self.accel.dtype)
         return accel, sound
 
 def padding(signal, Ls):
