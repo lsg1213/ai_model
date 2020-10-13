@@ -7,6 +7,7 @@ from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoi
 import datetime
 import cls_feature_class, cls_data_generator
 from glob import glob
+from tensorflow.keras.optimizers import Adam
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
@@ -87,12 +88,12 @@ def get_data(config, train=True):
     
     dataset = tf.data.Dataset.from_tensor_slices((data, label))
     if train:
-        dataset = dataset.repeat(2).shuffle(buffer_size=100000)
+        dataset = dataset.repeat(1).shuffle(buffer_size=100000)
         dataset = dataset.batch(config.batch)
         dataset = dataset.prefetch(AUTOTUNE)
     else:
         dataset = dataset.batch(config.batch, drop_remainder=False)
-
+    
     return dataset, data_in, data_out
 
 def main(config):
@@ -116,9 +117,9 @@ def main(config):
             #                   mode='max',
             #                   verbose=1,
             #                   min_lr=1e-5),
-            EarlyStopping(monitor='val_acc',
-                          mode='max',
-                          patience=5), # 3),
+            EarlyStopping(monitor='val_loss',
+                          mode='min',
+                          patience=10), # 3),
             ModelCheckpoint(config.name+'.h5',
                             monitor='val_acc',
                             mode='max',
@@ -126,6 +127,8 @@ def main(config):
             TerminateOnNaN(),
             TensorBoard(log_dir='tensorboard/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
         ]
+
+    model.compile(optimizer=Adam(learning_rate=0.0001), loss='sparse_categorical_crossentropy', loss_weights=config.loss_weights, metrics='acc')
 
     model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
 
