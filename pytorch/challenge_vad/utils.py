@@ -50,7 +50,7 @@ class Dataloader_generator():
         self.transform = transform
         self.batch_size = batch_size
         self.config = config
-        self.data = data
+        self.data = [np.log2(i) for i in data]
         self.labels = labels
         self.n_data_per_epoch = n_data_per_epoch
         self.device = device
@@ -75,7 +75,7 @@ class Dataloader_generator():
             #     data = torch.cat(list(pool.map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
             # with concurrent.futures.ThreadPoolExecutor() as pool:  
             #     labels = torch.cat(list(pool.map(self.win.label_to_window(self.config), [torch.from_numpy(i) for i in label])), dim=0)
-
+            
             if len(data) != len(labels):
                 raise ValueError(f'data {data.shape}, labels {labels.shape}')
 

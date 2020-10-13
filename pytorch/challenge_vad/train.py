@@ -74,6 +74,10 @@ with future.ThreadPoolExecutor() as pool:
     y = list(pool.map(getDataFromPath, y_path))
     eval_x = list(pool.map(getDataFromPath, eval_x_path))
     eval_y = list(pool.map(getDataFromPath, eval_y_path))
+del x_path
+del y_path
+del eval_x_path
+del eval_y_path
 # data shape => (sample, n_mels, frames)
 # x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))[:100]
 # y = pickle.load(open(PATH+'/timit_noisex_y_mel.pickle', 'rb'))[:100]
@@ -103,8 +107,8 @@ EPOCHS = 200
 LR = 0.01
 EARLY_STOP_STEP = 10
 regularization_weight = 0.1
-train_times = 1
-val_times = 3
+train_times = 10
+val_times = 2
 eval_times = 20
 trainloader = Dataloader_generator(x, y, transform=None, config=config,device=device, n_data_per_epoch=10000,divide=train_times, batch_size=BATCH_SIZE)
 valloader = Dataloader_generator(val_x, val_y, transform=None, config=config, device=device, n_data_per_epoch=len(val_x), divide=val_times, batch_size=BATCH_SIZE)
@@ -119,8 +123,8 @@ model.to(device)
 criterion = nn.BCELoss()
 # optimizer = optim.SGD(model.parameters(),lr=LR,momentum=0.9)
 optimizer = optim.Adam(model.parameters())
-# lr_schedule = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
-lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
+lr_schedule = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+# lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.0001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
 startepoch = 0
 win = WindowUtils(config.pad_size, config.step_size, device)
 min_loss = 1000000000000.0
@@ -144,7 +148,7 @@ for epoch in range(startepoch,EPOCHS):
     for times in range(train_times):
         train_loader = next(iter(trainloader.next_loader(times)))
         # with tqdm(train_loader) as pbar:
-        for idx, (data, label) in enumerate(tqdm(train_loader)):
+        for idx, (data, label) in enumerate(train_loader):
             data = data.to(device)
             label = label.to(device)
             optimizer.zero_grad()
@@ -163,7 +167,7 @@ for epoch in range(startepoch,EPOCHS):
                 # fpr, tpr, thresholds = roc_curve(np.reshape(label.cpu().numpy(),(-1)), np.reshape(preds.cpu().detach().numpy(),(-1)))
                 # running_auc += auc(fpr, tpr)
                 # pbar.set_postfix(times=f'{times}/{train_times}',train_loss=f'loss: {running_loss / ((idx+1) + loader_len):0.4}', train_auc=f'auc: {running_auc / ((idx+1) + loader_len):0.4}', train_acc=f'acc: {running_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
-            loader_len += len(train_loader)
+        loader_len += len(train_loader)
         del train_loader
         torch.cuda.empty_cache()
     running_loss /= loader_len
@@ -189,66 +193,33 @@ for epoch in range(startepoch,EPOCHS):
                     post_loss = criterion(post_score, label)
                     loss = pipe_loss + multi_loss + regularization_weight * post_loss
                     # _, preds = torch.max(post_loss, 1)
-                    preds = torch.round(post_score).detach()
+                    preds = post_score.detach()
                     val_loss += loss.item()
-                    val_correct += torch.sum(preds == label.data)
+                    val_correct += torch.sum(torch.round(preds) == label.data)
                     label_seq = win.windows_to_sequence(label,config.pad_size,config.step_size)
                     preds_seq = win.windows_to_sequence(preds,config.pad_size,config.step_size)
                     
-                    if len(label_seq.unique()) == 2 and len(preds_seq.unique()) == 2:
-                        val_auc += getAUC(label_seq.cpu(), preds_seq.cpu())
+                    if len(label_seq.unique()) == 2:
+                        val_auc += getAUC(preds_seq.cpu(), label_seq.cpu())
                     else:
-                        auc_count -= 1
-                    pbar.set_postfix(accuracy=f'val_loss: {val_loss / ((idx+1) + loader_len):0.4}, val_auc: {val_auc / ((idx+1) + loader_len):0.4}, val_acc: {val_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
+                        auc_count += 1
+                    pbar.set_postfix(accuracy=f'val_loss: {val_loss / ((idx+1) + loader_len):0.4}, val_auc: {val_auc / ((idx+1) + loader_len):0.4}, val_acc: {val_correct / (((idx+1) + loader_len) / 7 / BATCH_SIZE  - auc_count):0.4}')
                 loader_len += len(pbar)
             del val_loader
             torch.cuda.empty_cache()
         val_loss /= loader_len
-        val_correct /= auc_count
-        val_auc /= loader_len
-
-        # loader_len = 0
-        # for times in range(eval_times):
-        #     eval_loader = next(iter(evalloader.next_loader(times)))
-        #     with tqdm(eval_loader) as pbar:
-        #         for idx, (data, label) in enumerate(pbar):
-        #             data = data.to(device)
-        #             label = label.to(device)
-        #             pipe_score, multi_score, post_score = model(data)
-        #             pipe_loss = criterion(pipe_score, label)
-        #             multi_loss = criterion(multi_score, label)
-        #             post_loss = criterion(post_score, label)
-        #             loss = pipe_loss + multi_loss + regularization_weight * post_loss
-        #             # _, preds = torch.max(post_loss, 1)
-        #             preds = torch.round(post_score).clone()
-        #             eval_loss += loss.item()
-        #             eval_correct += torch.sum(preds == label.data).cpu()
-        #             label_seq = win.windows_to_sequence(label.cpu(),config.pad_size,config.step_size)
-        #             preds_seq = win.windows_to_sequence(preds.cpu(),config.pad_size,config.step_size)
-        #             fpr, tpr, thresholds = roc_curve(label_seq.type(torch.int).numpy(), preds_seq.numpy(), pos_label=1)
-        #             _eval_auc = auc(fpr, tpr)
-        #             eval_auc += _eval_auc
-        #             pbar.set_postfix(accuracy=f'eval_loss: {eval_loss / ((idx+1) + loader_len):0.4}, eval_auc: {eval_auc / ((idx+1) + loader_len):0.4}, eval_acc: {eval_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
-            
-        #         loader_len += len(pbar)
-        #     eval_loader = None
-        #     torch.cuda.empty_cache()
-        # eval_loss /= loader_len
-        # eval_correct /= loader_len * 7 * BATCH_SIZE
-        # eval_auc /= loader_len
+        val_correct /= loader_len * 7 * BATCH_SIZE
+        val_auc /= (loader_len - auc_count)
+        
     writer.add_scalar('loss/train_loss',running_loss, epoch)
-    # writer.add_scalar('acc/train_acc',running_correct, epoch)
-    # writer.add_scalar('auc/train_auc',running_auc, epoch)
+    
     writer.add_scalar('loss/val_loss',val_loss, epoch)
     writer.add_scalar('acc/val_acc',val_correct, epoch)
     writer.add_scalar('auc/val_auc',val_auc, epoch)
-    # writer.add_scalar('loss/eval_loss',eval_loss, epoch)
-    # writer.add_scalar('acc/eval_acc',eval_correct, epoch)
-    # writer.add_scalar('auc/eval_auc',eval_auc, epoch)
+    
     print(f'epoch: {epoch} loss: {running_loss:0.4}, val_loss: {val_loss:0.4}, val_acc: {val_correct:0.4}, val_auc: {val_auc:0.4}, eval_loss: {eval_loss:0.4}, eval_acc: {eval_correct:0.4}, eval_auc: {eval_auc:0.4}, time: {time() - start_time:0.4}')
-    # if np.isnan(eval_auc) or np.isnan(eval_correct) or np.isnan(eval_loss):
-    #     print(f'Nan is detected, eval_auc: {eval_auc:0.4}, eval_acc: {eval_correct:0.4}, eval_loss{eval_loss:0.4}')
-    #     break
+
+
     torch.save({
         'model':model.state_dict(),
         'optimizer':optimizer.state_dict(),
@@ -257,11 +228,11 @@ for epoch in range(startepoch,EPOCHS):
         'min_loss':min_loss
         }, model_save_path + f'/{epoch}_valloss{val_loss:0.4}.pt')
     
-    lr_schedule.step(val_loss)
+    lr_schedule.step()
     torch.cuda.empty_cache()
     if val_loss < min_loss:
         epochs_no_improve = 0
-        # min_loss = val_loss
+        min_loss = val_loss
     else:
         epochs_no_improve += 1
     if epoch > 5 and epochs_no_improve == EARLY_STOP_STEP:

@@ -100,43 +100,31 @@ def auroralibri(config):
             return np.load(path)
 
         def wavtomel(path):
-            wav, sr = torchaudio.load_wav(path)
-            
-            if sr != config.sr:
-                raise ValueError('sampling rate is different from config.sr')
-            
-            # wav = (channel, time)
-            
-            mel = torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=win_length, hop_length=hop_length, n_mels=config.nmels)(wav)
-            return mel
+            wavpath = path[0]
+            labelpath = path[1]
+            if not os.path.exists(os.path.join(save_path+'/data/', os.path.basename(wavpath).split('.')[0]+'.joblib')):
 
-        wav_path = wav_path[:10]
-        label_path = label_path[:10] 
-        with concurrent.futures.ThreadPoolExecutor(1) as pool:
-            mels = list(pool.map(wavtomel, wav_path))
-            labels = list(pool.map(load_label, label_path))
-        for i, j in enumerate(labels):
-            mels[i] = mels[i][:,:,:len(j)].squeeze(0).transpose(0,1)
-        mels = torch.cat(mels)
-        labels = torch.from_numpy(np.concatenate(labels))
+                wav, sr = torchaudio.load_wav(wavpath)
+                
+                if sr != config.sr:
+                    raise ValueError('sampling rate is different from config.sr')
+                
+                # wav = (channel, time)
+                
+                mel = torchaudio.transforms.MelSpectrogram(sample_rate=config.sr, n_fft=config.nfft, win_length=win_length, hop_length=hop_length, n_mels=config.nmels)(wav)
+                label = np.load(labelpath)
+                
+                mel = mel[:,:,:len(label)].squeeze(0).transpose(0,1)
+                joblib.dump(mel.numpy(), open(os.path.join(save_path+'/data/', os.path.basename(wavpath).split('.')[0]+'.joblib'),'wb'))
+                del mel
+            if not os.path.exists(os.path.join(save_path+'/label/', os.path.basename(wavpath).split('.')[0]+'.joblib')):
+                joblib.dump(label, open(os.path.join(save_path+'/label/', os.path.basename(wavpath).split('.')[0]+'.joblib'),'wb'))
+                del label
 
-        if mels.size(0) != labels.size(0):
-            raise ValueError(f'mel len {mels.size(0)}, labels len {labels.size(0)}')
-        
-        def save(data, path):
-            _path = os.path.join(save_path, f'{path}')
-            if not os.path.exists(_path):
-                os.makedirs(_path)
-
-            def _save(data):
-                joblib.dump(data[1], open(os.path.join(_path, f'{data[0]}_{snr}_train_x.joblib'), 'wb'))
-            
-            # for i in data:
-            #     _save(i)
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                pool.map(_save, data)
-        save(enumerate(mels.split(mels.size(0) // 20)), 'data')
-        save(enumerate(labels.split(labels.size(0) // 20)), 'label')
+        wav_path = wav_path
+        label_path = label_path
+        with concurrent.futures.ThreadPoolExecutor(config.cpu) as pool:
+            pool.map(wavtomel, zip(wav_path, label_path))
 
 def timitnoisex(config):
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
