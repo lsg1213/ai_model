@@ -3,7 +3,7 @@ import numpy as np
 from utils import create_folder
 import models
 import tensorflow as tf
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TerminateOnNaN
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TerminateOnNaN, LambdaCallback
 import datetime
 import cls_feature_class, cls_data_generator
 from glob import glob
@@ -44,6 +44,9 @@ def angle_to_number(label):
             label[i] = 10
         else:
             label[i] = int(label[i] / 20)
+        if not (label[i] in [0,1,2,3,4,5,6,7,8,9,10]):
+            print(label[i])
+            raise ValueError('label has a problem')
     return label
 
 def split_in_seqs(data, config):
@@ -82,6 +85,8 @@ def get_data(config, train=True):
         data[i] = np.reshape(data[i], (gen_cls.nb_frames_file, gen_cls.feat_len, gen_cls._2_nb_ch))
     data = np.array(data)
     data = np.transpose(data, (0, 3, 1, 2))
+    sedlabel = [0 if i == -1 else 1 for i in label]
+    pdb.set_trace()
     
     data_in = (config.batch, gen_cls._2_nb_ch, gen_cls.nb_frames_file, gen_cls.feat_len)
     data_out = (config.batch, gen_cls.nb_classes)
@@ -109,29 +114,36 @@ def main(config):
                                   nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
                                   rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size],
                                   weights=config.loss_weights)
-    
+
+
     callbacks = [
-            # ReduceLROnPlateau(monitor='val_AUC',
-            #                   factor=0.9,
-            #                   patience=3, # 1,
-            #                   mode='max',
-            #                   verbose=1,
-            #                   min_lr=1e-5),
+            ReduceLROnPlateau(monitor='val_loss',
+                              factor=0.9,
+                              patience=1, # 1,
+                              mode='min',
+                              verbose=1,
+                              min_lr=1e-5),
             EarlyStopping(monitor='val_loss',
                           mode='min',
-                          patience=10), # 3),
+                          patience=3), # 3),
             ModelCheckpoint(config.name+'.h5',
                             monitor='val_acc',
                             mode='max',
                             save_best_only=True),
             TerminateOnNaN(),
-            TensorBoard(log_dir='tensorboard/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S'))
+            TensorBoard(log_dir='tensorboard_log/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')),
+
         ]
 
-    model.compile(optimizer=Adam(learning_rate=0.0001), loss='sparse_categorical_crossentropy', loss_weights=config.loss_weights, metrics='acc')
+    model.compile(optimizer=Adam(), loss='sparse_categorical_crossentropy', loss_weights=config.loss_weights, metrics='acc')
 
     model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
-
+    
+    pdb.set_trace()
+    for i,j in trainset:
+        print(model(i[0], training=False))
+        print(j[0])
+    pdb.set_trace()
 
 if __name__ == "__main__":
     arg = getparam()

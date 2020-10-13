@@ -29,9 +29,7 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
         spec_cnn = Dropout(dropout_rate)(spec_cnn)
     
     # spec_cnn = Permute((2, 1, 3))(spec_cnn)
-    # spec_rnn = Reshape((data_in[-2], -1))(spec_cnn)
-    # spec_rnn = Reshape((1, -1))(spec_cnn)
-    spec_rnn = tf.squeeze(spec_cnn, 2)
+    spec_rnn = Reshape((data_in[-2], -1))(spec_cnn)
     for nb_rnn_filt in rnn_size:
         spec_rnn = Bidirectional(GRU(nb_rnn_filt, activation='tanh', dropout=dropout_rate, recurrent_dropout=dropout_rate, return_sequences=True), merge_mode='mul')(spec_rnn)
     
@@ -44,7 +42,7 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
     doa = TimeDistributed(Dense(data_out[1]))(doa)
     doa = Flatten()(doa)
     doa = Dense(data_out[1])(doa)
-    doa = Activation('tanh', name='doa_out')(doa)
+    doa = Activation('softmax', name='doa_out')(doa)
 
     # SED
     # sed = spec_rnn
