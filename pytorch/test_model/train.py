@@ -34,7 +34,7 @@ args.add_argument('--sr', type=int, default=8192)
 args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
 args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel', 'mfcc'])
 args.add_argument('--nmels', type=int, default=80)
-args.add_argument('--nfft', type=int, default=400)
+args.add_argument('--nfft', type=int, default=512)
 
 
 def main(config):
