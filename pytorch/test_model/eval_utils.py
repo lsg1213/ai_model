@@ -17,7 +17,39 @@ def inverse_mel(data, sr=8192, n_mels=160):
     # data = (batch, )
     # data = 
     pass
-    
+
+
+
+class testDataset(Dataset):
+    def __init__(self, accel, sound, config):
+        self.config = config
+        self.accel = self.flatten(accel)
+        self.sound = self.flatten(sound)
+        self.split = config.len // 2 # splited out len, must be <= config.len
+        if self.split == 0:
+            self.split = 1
+        self.mode = 'center' # split place of out
+        self.index = torch.arange(len(self.accel) // self.split)
+        self.accel = self.split(self.accel)
+        self.sound = self.sound(self.sound)
+        
+    def split(self, data, length = self.split):
+        res = []
+        window_size = len(data) // length
+        for i in range(window_size):
+            res.append(data[i: i*self.config.len])
+        return res
+
+    def flatten(self, data):
+        return [x for y in data for x in y]
+
+    def __len__(self):
+        return len(self.index)
+
+    def __getitem__(self, idx):
+        if 
+
+        
 class makeDataset(Dataset):
     def __init__(self, accel, sound, config, train=True):
         self.config = config

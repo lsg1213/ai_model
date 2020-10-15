@@ -10,6 +10,7 @@ def cal_outputs_conv(inputs, layer):
             inputs = inputs[0]
         return (inputs + 2 * layer.padding[0] - layer.dilation[0] * (layer.kernel_size[0] - 1) - 1) // layer.stride[0] + 1
     elif len(layer.kernel_size) == 2:
+        
         return ((inputs[0] + 2 * layer.padding[0] - layer.dilation[0] * (layer.kernel_size[0] - 1) - 1) // layer.stride[0] + 1,
                 (inputs[1] + 2 * layer.padding[1] - layer.dilation[1] * (layer.kernel_size[1] - 1) - 1) // layer.stride[1] + 1)
 
@@ -41,7 +42,7 @@ class CombineAutoencoder(nn.Module):
             self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, outputs[0], config)
         elif config.feature == 'mel':
             # mel: inputs=(frames, 12), outputs=(out_frames), inch=(self.conv2 filter number), outch=(8)
-            self.back = FCAutoencoder(_inputs, config.nfft, self.conv2.out_channels, 8, config)
+            self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, 8, config)
 
         if config.weight:
             with torch.no_grad():
@@ -142,5 +143,5 @@ class FCAutoencoder(nn.Module):
         elif self.config.feature == 'mel':
             # make mel output
             # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
-            out = torch.reshape(out, (out.size(0), self.config.nfft, 8))
+            out = torch.reshape(out, (out.size(0), self.config.len, 8))
         return out.type(torch.double)   

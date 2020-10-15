@@ -17,7 +17,7 @@ args.add_argument('--gpus', type=str, default='0')
 args.add_argument('--name', type=str, default='')
 args.add_argument('--epoch', type=int, default=200)
 args.add_argument('--decay', type=float, default=1/np.sqrt(2))
-args.add_argument('--batch', type=int, default=512)
+args.add_argument('--batch', type=int, default=1024)
 args.add_argument('--len', type=int, default=200)
 args.add_argument('--b', type=int, default=200)
 args.add_argument('--opt', type=str, default='adam')
@@ -89,7 +89,7 @@ def main(config):
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
     transfer_f = torch.from_numpy(transfer_f).to(device)
     transfer_f.requires_grad = False
-    if config.feature == 'wav':
+    if config.feature in ['wav', 'mel']:
         accel_raw_data = pickle.load(open(os.path.join(data_path,'stationary_accel_data.pickle'),'rb'))
         sound_raw_data = pickle.load(open(os.path.join(data_path,'stationary_sound_data.pickle'),'rb'))
     elif config.feature == 'mel':
@@ -107,11 +107,14 @@ def main(config):
     # accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length, expand=True)
     # sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length, expand=False)
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
-    dataset = makeDataset(accel_raw_data, sound_raw_data, config)
+    dataset = makeDataset(accel_raw_data, sound_raw_data, config, device)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
 
-    # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(2), outch=(frames)
-    model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
+    # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(3), outch=(frames)
+    if config.feature == 'wav':
+        model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
+    elif config.feature == 'mel':
+        model = getattr(models, config.model)((config.nmels, 12), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     print(config.model)
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
@@ -149,18 +152,21 @@ def main(config):
     for epoch in range(startepoch, EPOCH):
         train_loss = 0.
         model.train()
-        
+        if config.feature == 'mel':
+            melspectrogram = torchaudio.transforms.MelSpectrogram(8192, n_fft=config.nfft, n_mels=config.nmels).to(device)
         with tqdm(train_loader) as pbar:
             for index, (accel, sound) in enumerate(pbar):
         # for index, (accel, sound) in enumerate(train_loader):
-                accel = accel.to(device).type(torch.float64)
+                accel = accel.to(device)
+                if config.feature == 'mel':
+                    accel = melspectrogram(accel.type(torch.float32)).transpose(1,3)
+                accel = accel.type(torch.float64)
                 sound = sound.to(device).type(torch.float64)
                 optimizer.zero_grad()
                 sound = sound.to(device)
                 y = model(accel)
                 # if config.feature == 'mel':
                 #     y = meltowav(y, config)
-
                 if config.mode == 'sj_S':
                     y_p = conv_with_S(y, transfer_f, config)
                 else:
@@ -179,8 +185,8 @@ def main(config):
                 # _, preds = torch.max(y_p, 1)
                 train_loss += total_loss.item()
                 # train_acc += torch.sum(preds == sound.data)
-                # pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
-                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{train_loss / (index + 1):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
+                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
+                # pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{train_loss / (index + 1):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
             train_loss /= len(train_loader)
         print(f'{epoch}, loss: {train_loss}\nvalue')
         print(f'{y_p[0][0]},\n{sound[0][0]}')
@@ -242,8 +248,8 @@ def main(config):
 
 if __name__ == "__main__":
     config = args.parse_args()
-    # if config.nfft > config.len + config.b:
-    #     config.nfft = config.len + config.b
-    #     print(f'nfft is too big to use, change nfft to {config.len + config.b}')
+    if config.nfft > config.len + config.b:
+        config.nfft = config.len + config.b
+        print(f'nfft is too big to use, change nfft to {config.len + config.b}')
     main(config)
     

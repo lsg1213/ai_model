@@ -40,7 +40,6 @@ def seqtowin(seq, config):
         if len(win) != config.nfft:
             win = torch.cat([win, torch.zeros((config.nfft - len(win), seq.shape[-1]), dtype=win.dtype, device=win.device)])
         windows.append(win)
-    pdb.set_trace()
     return torch.cat([i.unsqueeze(0) for i in windows])
 
 def transform(accel, sound, config):

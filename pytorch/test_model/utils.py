@@ -21,15 +21,16 @@ def inverse_mel(data, sr=8192, n_mels=160):
     pass
     
 class makeDataset(Dataset):
-    def __init__(self, accel, sound, config, train=True):
+    def __init__(self, accel, sound, config, device, train=True):
         self.config = config
         self.takebeforetime = config.b
         self.data_length = config.len
+        self.device = device
 
         if self.takebeforetime % self.data_length != 0:
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         
-        if config.feature == 'wav':
+        if config.feature in ['wav', 'mel']:
             self.accel = data_spread(accel, self.data_length, config)
             self.sound = data_spread(sound, self.data_length, config)
         elif config.feature == 'mel':
@@ -53,8 +54,7 @@ class makeDataset(Dataset):
 
     def __getitem__(self, idx):
         idx = self.perm[idx]
-        if self.config.feature == 'wav':
-            # mel이 여기에서 데이터 뿌리는 거부터 잘못
+        if self.config.feature in ['wav', 'mel']:
             index = idx + self.config.latency
             accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
             if self.config.future:
@@ -82,14 +82,13 @@ def padding(signal, Ls):
 
 def meltowav(mel, config):
     # mel shape = (batch, frames, n_mels, channel=8)
-    pdb.set_trace()
     if len(mel.shape) == 4:
         mel = mel.permute((0,3,2,1))  # (batch, 8, n_mels, frames)
     else:
         raise ValueError(f'mel dimension must be 4, now {len(mel.shape)}')
 
-    mid = torchaudio.transforms.InverseMelScale(config.nfft // 2 + 1, config.nmels, sample_rate=config.sr)(mel)
-    wav = torchaudio.transforms.GriffinLim(config.nfft)(mid)
+    mid = torchaudio.transforms.InverseMelScale(config.nfft // 2 + 1, config.nmels, sample_rate=config.sr).to(mel.device)(mel)
+    wav = torchaudio.transforms.GriffinLim(config.nfft).to(mel.device)(mid)
     return wav
 
 
