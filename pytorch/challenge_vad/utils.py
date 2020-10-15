@@ -1,10 +1,10 @@
-import torch, pickle, pdb, joblib
+import torch, pickle, pdb, joblib, torchaudio
 from glob import glob
 import numpy as np
 from random import choice
 from glob import glob
 import pdb
-import concurrent.futures, multiprocessing
+import concurrent.futures as fu
 from sklearn.metrics import auc, roc_curve
 # PATH = '/root/datasets/ai_challenge/ST_attention_dataset'
 # x = pickle.load(open(PATH+'/timit_noisex_x_mel.pickle', 'rb'))
@@ -50,7 +50,7 @@ class Dataloader_generator():
         self.transform = transform
         self.batch_size = batch_size
         self.config = config
-        self.data = [np.log2(i) for i in data]
+        self.data = data
         self.labels = labels
         self.n_data_per_epoch = n_data_per_epoch
         self.device = device
@@ -69,8 +69,11 @@ class Dataloader_generator():
         while True:
             perm = torch.randperm(len(data)).to(self.device)
             
-            data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
-            labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
+            with fu.ThreadPoolExecutor() as pool:
+                data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
+            
+            with fu.ThreadPoolExecutor() as pool:
+                labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
             # with concurrent.futures.ThreadPoolExecutor() as pool:
             #     data = torch.cat(list(pool.map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
             # with concurrent.futures.ThreadPoolExecutor() as pool:  
@@ -156,8 +159,11 @@ class WindowUtils():
             raise ValueError(f'invalid feature - {feature}')
 
         def _preprocess_spec(spec):
-            if feature in ['spec', 'mel']:
+            spec = spec.to(self.device)
+            if feature in ['spec']:
                 spec = torch.log(spec + EPSILON)
+            elif feature in ['mel']:
+                spec = torchaudio.transforms.AmplitudeToDB(top_db=80).to(self.device)(spec)
             if feature == 'mel':
                 if config.norm == 'timit':
                     spec = (spec - 4.5252) / 2.6146 # normalize
@@ -168,7 +174,7 @@ class WindowUtils():
             windows = self.sequence_to_windows(spec, 
                                         config.pad_size, config.step_size,
                                         skip, True, LOG_EPSILON)
-            return windows
+            return windows.cpu()
         return _preprocess_spec
 
 def getDataFromPath(path):

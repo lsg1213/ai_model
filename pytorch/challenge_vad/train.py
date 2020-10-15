@@ -85,9 +85,10 @@ del eval_y_path
 # eval_x = pickle.load(open(PATH+'/libri_aurora_x_mel.pickle', 'rb'))[:100]
 print('data loading is success')
 for i in range(len(x)):
-    x[i] = x[i][:, :len(y[i])]
+    x[i] = x[i][:, :len(y[i])] + 1e-8
 for i in range(len(eval_x)):
-    eval_x[i] = eval_x[i][:, :len(eval_y[i])]
+    eval_x[i] = eval_x[i][:, :len(eval_y[i])] + 1e-8
+
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 x = x + eval_x
 y = y + eval_y
@@ -147,26 +148,26 @@ for epoch in range(startepoch,EPOCHS):
     model.train()
     for times in range(train_times):
         train_loader = next(iter(trainloader.next_loader(times)))
-        # with tqdm(train_loader) as pbar:
-        for idx, (data, label) in enumerate(train_loader):
-            data = data.to(device)
-            label = label.to(device)
-            optimizer.zero_grad()
-            pipe_score, multi_score, post_score = model(data)
-            # _, preds = torch.max(post_loss, 1)
-            preds = torch.round(post_score).detach()
-            pipe_loss = criterion(pipe_score, label)
-            multi_loss = criterion(multi_score, label)
-            post_loss = criterion(post_score, label)
-            loss = pipe_loss + multi_loss + regularization_weight * post_loss
-            loss.backward()
-            
-            optimizer.step()
-            running_loss += loss.item()
-            # running_correct += torch.sum(preds == label.data)
+        with tqdm(train_loader) as pbar:
+            for idx, (data, label) in enumerate(pbar):
+                data = data.to(device)
+                label = label.to(device)
+                optimizer.zero_grad()
+                pipe_score, multi_score, post_score = model(data)
+                # _, preds = torch.max(post_loss, 1)
+                preds = torch.round(post_score).detach()
+                pipe_loss = criterion(pipe_score, label)
+                multi_loss = criterion(multi_score, label)
+                post_loss = criterion(post_score, label)
+                loss = pipe_loss + multi_loss + regularization_weight * post_loss
+                loss.backward()
+                
+                optimizer.step()
+                running_loss += loss.item()
+                running_correct += torch.sum(preds == label.data)
                 # fpr, tpr, thresholds = roc_curve(np.reshape(label.cpu().numpy(),(-1)), np.reshape(preds.cpu().detach().numpy(),(-1)))
                 # running_auc += auc(fpr, tpr)
-                # pbar.set_postfix(times=f'{times}/{train_times}',train_loss=f'loss: {running_loss / ((idx+1) + loader_len):0.4}', train_auc=f'auc: {running_auc / ((idx+1) + loader_len):0.4}', train_acc=f'acc: {running_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
+                pbar.set_postfix(times=f'{times}/{train_times}',train_loss=f'loss: {running_loss / ((idx+1) + loader_len):0.4}', train_auc=f'auc: {running_auc / ((idx+1) + loader_len):0.4}', train_acc=f'acc: {running_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')
         loader_len += len(train_loader)
         del train_loader
         torch.cuda.empty_cache()
@@ -178,7 +179,7 @@ for epoch in range(startepoch,EPOCHS):
     model.eval()
     eval_loss, eval_correct, eval_auc = 0.0, 0.0, 0.0
     val_loss, val_correct, val_auc = 0.0, 0.0, 0.0
-    auc_count = loader_len * 7 * BATCH_SIZE
+    auc_count = 0
     with torch.no_grad():
         loader_len = 0
         for times in range(val_times):
@@ -203,7 +204,7 @@ for epoch in range(startepoch,EPOCHS):
                         val_auc += getAUC(preds_seq.cpu(), label_seq.cpu())
                     else:
                         auc_count += 1
-                    pbar.set_postfix(accuracy=f'val_loss: {val_loss / ((idx+1) + loader_len):0.4}, val_auc: {val_auc / ((idx+1) + loader_len):0.4}, val_acc: {val_correct / (((idx+1) + loader_len) / 7 / BATCH_SIZE  - auc_count):0.4}')
+                    pbar.set_postfix(accuracy=f'val_loss: {val_loss / ((idx+1) + loader_len):0.4}, val_auc: {val_auc / ((idx+1) + loader_len):0.4}, val_acc: {val_correct / (((idx+1) + loader_len) / 7 / BATCH_SIZE):0.4}')
                 loader_len += len(pbar)
             del val_loader
             torch.cuda.empty_cache()
