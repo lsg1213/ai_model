@@ -31,8 +31,8 @@ class makeDataset(Dataset):
             raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         
         if config.feature in ['wav', 'mel']:
-            self.accel = data_spread(accel, self.data_length, config)
-            self.sound = data_spread(sound, self.data_length, config)
+            self.accel = data_spread(accel, self.data_length, config).to(device)
+            self.sound = data_spread(sound, self.data_length, config).to(device)
         elif config.feature == 'mel':
             self.accel = accel
             self.sound = sound
@@ -97,7 +97,7 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M)
     if config.ema:
         signal = ema(signal, n=2)
-    S_data = torch.tensor(S_data.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=signal.device)
+    
     Ls = S_data.size(1)
     K = S_data.size(-1)
     signal = padding(signal, Ls)

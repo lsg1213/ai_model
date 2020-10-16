@@ -48,7 +48,7 @@ def main(config):
         if config.future:
             name += '_future'
         if config.diff:
-            name += '_diff'
+            name += f'_diff_weight{config.loss_weight}'
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
@@ -125,7 +125,7 @@ def main(config):
 
 
         
-    
+    transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
     for epoch in range(startepoch, EPOCH):
         train_loss = 0.
@@ -154,7 +154,7 @@ def main(config):
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
                     diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
-                    total_loss = 0.5 * loss + diff_loss
+                    total_loss = config.loss_weight * loss + diff_loss
                 else:
                     total_loss = loss
                     
@@ -163,7 +163,7 @@ def main(config):
                 # _, preds = torch.max(y_p, 1)
                 train_loss += total_loss.item()
                 # train_acc += torch.sum(preds == sound.data)
-                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{np.mean(train_loss):0.4}')
+                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{train_loss / (index + 1):0.4}')
                 # pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{train_loss / (index + 1):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
             train_loss /= len(train_loader)
         print(f'{epoch}, loss: {train_loss}\nvalue')
