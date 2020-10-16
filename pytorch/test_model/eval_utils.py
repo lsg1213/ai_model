@@ -23,22 +23,15 @@ def inverse_mel(data, sr=8192, n_mels=160):
 class testDataset(Dataset):
     def __init__(self, accel, sound, config):
         self.config = config
-        self.accel = self.flatten(accel)
-        self.sound = self.flatten(sound)
+        self.accel = torch.from_numpy(np.array(self.flatten(accel)))
+        self.sound = torch.from_numpy(np.array(self.flatten(sound)))
         self.split = config.len // 2 # splited out len, must be <= config.len
         if self.split == 0:
             self.split = 1
         self.mode = 'center' # split place of out
-        self.index = torch.arange(len(self.accel) // self.split)
-        self.accel = self.split(self.accel)
-        self.sound = self.sound(self.sound)
-        
-    def split(self, data, length = self.split):
-        res = []
-        window_size = len(data) // length
-        for i in range(window_size):
-            res.append(data[i: i*self.config.len])
-        return res
+        self.index = torch.arange(0, len(self.sound) - (config.b + config.len + config.latency + (config.len // 2) + (self.split // 2)), self.split)
+        # self.accel = self.split(self.accel)
+        # self.sound = self.split(self.sound)
 
     def flatten(self, data):
         return [x for y in data for x in y]
@@ -47,8 +40,17 @@ class testDataset(Dataset):
         return len(self.index)
 
     def __getitem__(self, idx):
-        if 
+        frame_size = self.config.b + self.config.len
+        return self.accel[self.index[idx]:self.index[idx] + frame_size], self.sound[self.index[idx] + frame_size + self.config.latency + (self.config.len // 2) - (self.split // 2): self.index[idx] + frame_size + self.config.latency + (self.config.len // 2) + (self.split // 2)]
 
+def sync(accel, sound, config, split = True):
+    if split:
+        accel = accel[self.config.b + self.config.len + self.config.latency + (self.config.len // 2) - (self.split // 2):]
+        sound = sound[:-(self.config.b + self.config.len + self.config.latency + (self.config.len // 2) - (self.split // 2))]
+    else:
+        accel = accel[self.config.b + self.config.len + self.config.latency:],
+        sound = sound[:-(self.config.b + self.config.len + self.config.latency)]
+    return accel, sound
         
 class makeDataset(Dataset):
     def __init__(self, accel, sound, config, train=True):

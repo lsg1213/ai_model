@@ -144,4 +144,4 @@ class FCAutoencoder(nn.Module):
             # make mel output
             # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
             out = torch.reshape(out, (out.size(0), self.config.len, 8))
-        return out.type(torch.double)   
+        return out.type(torch.double)

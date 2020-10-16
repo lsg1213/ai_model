@@ -1,4 +1,4 @@
-import torch, pickle, os, argparse, pdb, librosa, joblib
+import torch, pickle, os, pdb, librosa, joblib
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
@@ -11,30 +11,8 @@ from torchsummary import summary
 from glob import glob
 from pytorch_model_summary import summary
 import concurrent.futures as fu
-args = argparse.ArgumentParser()
-args.add_argument('--lr', type=float, default=0.001)
-args.add_argument('--gpus', type=str, default='0')
-args.add_argument('--name', type=str, default='')
-args.add_argument('--epoch', type=int, default=200)
-args.add_argument('--decay', type=float, default=1/np.sqrt(2))
-args.add_argument('--batch', type=int, default=1024)
-args.add_argument('--len', type=int, default=200)
-args.add_argument('--b', type=int, default=200)
-args.add_argument('--opt', type=str, default='adam')
-args.add_argument('--mode', type=str, default='sj_S')
-args.add_argument('--model', type=str, default='CombineAutoencoder')
-args.add_argument('--resume', action='store_true')
-args.add_argument('--ema', action='store_true')
-args.add_argument('--weight', action='store_true')
-args.add_argument('--relu', action='store_true')
-args.add_argument('--eval', action='store_true')
-args.add_argument('--future', action='store_true')
-args.add_argument('--diff', action='store_true')
-args.add_argument('--sr', type=int, default=8192)
-args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
-args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel', 'mfcc'])
-args.add_argument('--nmels', type=int, default=80)
-args.add_argument('--nfft', type=int, default=512)
+from params import get_arg
+
 
 
 def main(config):
@@ -176,7 +154,7 @@ def main(config):
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
                     diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
-                    total_loss = loss + diff_loss
+                    total_loss = 0.5 * loss + diff_loss
                 else:
                     total_loss = loss
                     
@@ -189,7 +167,7 @@ def main(config):
                 # pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{train_loss / (index + 1):0.4}', value=f'{y_p[0][0][0]}, {sound[0][0][0]}')
             train_loss /= len(train_loader)
         print(f'{epoch}, loss: {train_loss}\nvalue')
-        print(f'{y_p[0][0]},\n{sound[0][0]}')
+        print(f'{y_p[0][y_p.shape[1] // 2]},\n{sound[0][sound.shape[1] // 2]}')
 
         val_loss = 0.
         model.eval()
@@ -212,9 +190,9 @@ def main(config):
                         y_p = y
 
                     loss = criterion(y_p, sound)
-                    diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
+                    # diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
                     # _, preds = torch.max(y_p, 1)
-                    total_loss = loss.item() + diff_loss.item()
+                    total_loss = loss.item()
                     val_loss += total_loss
                     pbar.set_postfix(epoch=f'{epoch}', val_loss=f'{val_loss / (index + 1):0.4}')
                 val_loss /= len(val_loader)
@@ -247,8 +225,9 @@ def main(config):
             
 
 if __name__ == "__main__":
-    config = args.parse_args()
-    if config.nfft > config.len + config.b:
+    import sys
+    config = get_arg(sys.argv[1:])
+    if config.feature == 'mel' and config.nfft > config.len + config.b:
         config.nfft = config.len + config.b
         print(f'nfft is too big to use, change nfft to {config.len + config.b}')
     main(config)
