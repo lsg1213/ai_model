@@ -29,7 +29,7 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
         spec_cnn = Dropout(dropout_rate)(spec_cnn)
     
     # spec_cnn = Permute((2, 1, 3))(spec_cnn)
-    spec_rnn = Reshape((data_in[-2], -1))(spec_cnn)
+    spec_rnn = Reshape((data_in[-2], spec_cnn.shape[-2] * spec_cnn.shape[-1]))(spec_cnn)
     for nb_rnn_filt in rnn_size:
         spec_rnn = Bidirectional(GRU(nb_rnn_filt, activation='tanh', dropout=dropout_rate, recurrent_dropout=dropout_rate, return_sequences=True), merge_mode='mul')(spec_rnn)
     
@@ -39,24 +39,27 @@ def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
         doa = TimeDistributed(Dense(nb_fnn_filt))(doa)
         doa = Dropout(dropout_rate)(doa)
     
-    doa = TimeDistributed(Dense(data_out[1]))(doa)
+    # doa = TimeDistributed(Dense(data_out[1][-1]))(doa)
+    doa = Dense(data_out[1][0])(doa)
     doa = Flatten()(doa)
-    doa = Dense(data_out[1])(doa)
+    doa = Dense(data_out[1][-1])(doa)
     doa = Activation('softmax', name='doa_out')(doa)
 
     # SED
-    # sed = spec_rnn
-    # for nb_fnn_filt in fnn_size:
-    #     sed = TimeDistributed(Dense(nb_fnn_filt))(sed)
-    #     sed = Dropout(dropout_rate)(sed)
-    # sed = TimeDistributed(Dense(data_out[0][-1]))(sed)
-    # sed = Activation('sigmoid', name='sed_out')(sed)
+    sed = spec_rnn
+    for nb_fnn_filt in fnn_size:
+        sed = TimeDistributed(Dense(nb_fnn_filt))(sed)
+        sed = Dropout(dropout_rate)(sed)
+    # sed = TimeDistributed(Dense(data_out[1][0]))(sed)
+    sed = Flatten()(sed)
+    sed = Dense(data_out[1][0])(sed)
+    sed = Activation('sigmoid', name='sed_out')(sed)
 
-    model = Model(inputs=spec_start, outputs=doa)
+    model = Model(inputs=spec_start, outputs=[sed, doa])
     
 
     model.summary()
     return model
 
 if __name__ == "__main__":
-    get_model((32, 4, 436, 128), (32, 11), 0., 64, [8,8,2], [128,128], [128], 50.)
+    get_model((32, 4, 436, 128), (32, (1, 11)), 0., 64, [8,8,2], [128,128], [128], 50.)

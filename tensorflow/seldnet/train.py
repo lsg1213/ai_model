@@ -3,7 +3,7 @@ import numpy as np
 from utils import create_folder
 import models
 import tensorflow as tf
-from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TerminateOnNaN, LambdaCallback
+from tensorflow.keras.callbacks import TensorBoard, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau, TerminateOnNaN
 import datetime
 import cls_feature_class, cls_data_generator
 from glob import glob
@@ -30,13 +30,15 @@ def getparam():
     args.add_argument('--pool_size', type=str, default='8,8,2')
     args.add_argument('--rnn_size', type=str, default='128,128')
     args.add_argument('--fnn_size', type=int, default=128)
-    args.add_argument('--loss_weights', type=float, default=50.)
+    args.add_argument('--loss_weights', type=str, default='1,50')
 
 
     return args.parse_args()
 
 def list_element_to_int(li):
     return [int(i) for i in li]
+def list_element_to_float(li):
+    return [float(i) for i in li]
 
 def angle_to_number(label):
     for i, j in enumerate(label):
@@ -70,30 +72,27 @@ def split_in_seqs(data, config):
 
 def get_data(config, train=True):
     feat_cls = cls_feature_class.FeatureClass(config.nfft)
-    gen_cls = cls_data_generator.DataGenerator(config)
+    gen_cls = cls_data_generator.DataGenerator(config, shuffle=train, train=train)
     label_dir = feat_cls.get_label_dir()
     feat_dir = feat_cls.get_unnormalized_feat_dir()
-    if train:
-        data = [joblib.load(open(i,'rb')) for i in sorted(glob(feat_dir + '/*train_x*'))]
-        label = [joblib.load(open(i,'rb')) for i in sorted(glob(label_dir + '/*train_y*'))]
-    else:
-        data = [joblib.load(open(i,'rb')) for i in sorted(glob(feat_dir + '/*test_x*'))]
-        label = [joblib.load(open(i,'rb')) for i in sorted(glob(label_dir + '/*test_y*'))]
-    data = [x for y in data for x in y]
-    label = np.array(angle_to_number([x for y in label for x in y]))
+
+    data = gen_cls.data
+    label = np.array(angle_to_number(gen_cls.label))
     for i in range(len(data)):
         data[i] = np.reshape(data[i], (gen_cls.nb_frames_file, gen_cls.feat_len, gen_cls._2_nb_ch))
     data = np.array(data)
     data = np.transpose(data, (0, 3, 1, 2))
-    sedlabel = [0 if i == -1 else 1 for i in label]
-    pdb.set_trace()
+    sedlabel = np.array([0 if i == 10 else 1 for i in label]) # sed label
+    label = tf.data.Dataset.from_tensor_slices((sedlabel, label))
+    # label = [sedlabel, label]
     
     data_in = (config.batch, gen_cls._2_nb_ch, gen_cls.nb_frames_file, gen_cls.feat_len)
-    data_out = (config.batch, gen_cls.nb_classes)
+    data_out = (config.batch, (1, gen_cls.nb_classes))
     
-    dataset = tf.data.Dataset.from_tensor_slices((data, label))
+    _data = tf.data.Dataset.from_tensor_slices(data)
+    dataset = tf.data.Dataset.zip((_data, label))
     if train:
-        dataset = dataset.repeat(1).shuffle(buffer_size=100000)
+        dataset = dataset.repeat(1).shuffle(buffer_size=data.shape[0])
         dataset = dataset.batch(config.batch)
         dataset = dataset.prefetch(AUTOTUNE)
     else:
@@ -108,40 +107,39 @@ def main(config):
     trainset, data_in, data_out = get_data(config)
     testset, _, _ = get_data(config, train=False)
     
-    
 
     model = models.get_model(data_in=data_in, data_out=data_out, dropout_rate=config.dropout_rate,
-                                  nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
-                                  rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size],
-                                  weights=config.loss_weights)
-
+                            nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
+                            rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size],
+                            weights=list_element_to_float(config.loss_weights.split(',')))
+    # pdb.set_trace()
 
     callbacks = [
-            ReduceLROnPlateau(monitor='val_loss',
-                              factor=0.9,
-                              patience=1, # 1,
-                              mode='min',
-                              verbose=1,
-                              min_lr=1e-5),
-            EarlyStopping(monitor='val_loss',
-                          mode='min',
-                          patience=3), # 3),
+            # ReduceLROnPlateau(monitor='val_loss',
+            #                   factor=0.9,
+            #                   patience=1, # 1,
+            #                   mode='min',
+            #                   verbose=1,
+            #                   min_lr=1e-5),
+            # EarlyStopping(monitor='val_loss',
+            #               mode='min',
+            #               patience=10), # 3),
             ModelCheckpoint(config.name+'.h5',
-                            monitor='val_acc',
+                            monitor='doa_out_acc',
                             mode='max',
                             save_best_only=True),
             TerminateOnNaN(),
             TensorBoard(log_dir='tensorboard_log/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')),
 
         ]
-
-    model.compile(optimizer=Adam(), loss='sparse_categorical_crossentropy', loss_weights=config.loss_weights, metrics='acc')
+    
+    model.compile(optimizer=Adam(learning_rate=config.lr), loss=['binary_crossentropy','sparse_categorical_crossentropy'], loss_weights=list_element_to_float(config.loss_weights.split(',')), metrics=['acc'])
 
     model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
     
     pdb.set_trace()
     for i,j in trainset:
-        print(model(i[0], training=False))
+        print(model(i[0][tf.newaxis,...], training=False))
         print(j[0])
     pdb.set_trace()
 
