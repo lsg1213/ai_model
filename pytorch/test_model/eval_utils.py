@@ -19,6 +19,12 @@ def inverse_mel(data, sr=8192, n_mels=160):
     pass
 
 
+def write_wav(data, sr=8192, name='test_gen'):
+    data = data.type(torch.float32).numpy()
+    data = data - np.min(data)
+    data /= np.max(data)
+    write(name+'.wav', sr, data)
+    return data
 
 class testDataset(Dataset):
     def __init__(self, accel, sound, config):
@@ -26,10 +32,13 @@ class testDataset(Dataset):
         self.accel = torch.from_numpy(np.array(self.flatten(accel)))
         self.sound = torch.from_numpy(np.array(self.flatten(sound)))
         
+        self.mode = 'end'
 
         self.split_num = config.len // 2
         self.mode = 'center' # split place of out
         self.index = torch.arange(0, len(self.sound), self.split_num)
+        if config.future:
+            self.sound_index = torch.arange()
         # self.accel = self.split(self.accel)
         # self.sound = self.split(self.sound)
 

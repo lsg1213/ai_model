@@ -20,6 +20,7 @@ def get_arg(known=[]):
     args.add_argument('--eval', action='store_true')
     args.add_argument('--future', action='store_true')
     args.add_argument('--diff', action='store_true')
+    args.add_argument('--subtract', action='store_true')
     args.add_argument('--sr', type=int, default=8192)
     args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
     args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel', 'mfcc'])

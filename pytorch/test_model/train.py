@@ -49,6 +49,8 @@ def main(config):
             name += '_future'
         if config.diff:
             name += f'_diff_weight{config.loss_weight}'
+        if config.subtract:
+            name += f'_subtract'
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
@@ -87,6 +89,7 @@ def main(config):
     # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
     dataset = makeDataset(accel_raw_data, sound_raw_data, config, device)
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
+    
 
     # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(3), outch=(frames)
     if config.feature == 'wav':
@@ -149,11 +152,12 @@ def main(config):
                     y_p = conv_with_S(y, transfer_f, config)
                 else:
                     y_p = y
-                loss = criterion(y_p.type(sound.dtype), sound)
+                loss = criterion(sound - y_p.type(sound.dtype), torch.zeros_like(y_p))
                 if config.diff:
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
-                    diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
+                    diff = sound[:,1:,:] - sound[:,:-1,:]
+                    diff_loss = criterion((diff) - ((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype)), torch.zeros_like(diff))
                     total_loss = config.loss_weight * loss + diff_loss
                 else:
                     total_loss = loss
@@ -189,7 +193,7 @@ def main(config):
                     else:
                         y_p = y
 
-                    loss = criterion(y_p, sound)
+                    loss = criterion(sound - y_p, torch.zeros_like(y_p))
                     # diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
                     # _, preds = torch.max(y_p, 1)
                     total_loss = loss.item()

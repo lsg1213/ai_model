@@ -58,7 +58,7 @@ class makeDataset(Dataset):
             frame_size = self.config.b + self.config.len
             accel = self.accel[idx:idx + frame_size].transpose(0,1)
             if self.config.future:
-                sound = self.sound[index + frame_size:index + frame_size + config.len]
+                sound = self.sound[index + frame_size:index + frame_size + self.config.len]
             else:
                 sound = self.sound[index:index + self.config.len]
         elif self.config.feature == 'mel':
@@ -136,12 +136,6 @@ def filter_A(F):
     A = num / den
     return A
 
-def write_wav(data, sr=8192, name='test_gen'):
-    data = data.type(torch.float32).numpy()
-    data = data - np.min(data)
-    data /= np.max(data)
-    write(name+'.wav', sr, data)
-    return data
 
 def dBA_metric(y, gt, plot=True):
     """
