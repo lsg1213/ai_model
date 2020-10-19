@@ -100,40 +100,6 @@ class FeatureClass:
         audio_spec = np.array(list(map(self._spectrogram, audio_in)))
         joblib.dump(audio_spec.reshape(audio_spec.shape[0], self._max_frames, -1), open(os.path.join(self._feat_dir, audio_filename.split('/')[-1]), 'wb'))
 
-    # OUTPUT LABELS
-    def _read_desc_file(self, desc_filename):
-        desc_file = {
-            'class': list(), 'start': list(), 'end': list(), 'ele': list(), 'azi': list(),
-            'ele_dir': list(), 'azi_dir': list(), 'ang_vel': list(), 'dist': list()
-        }
-        pdb.set_trace()
-        
-        fid = joblib.load(open(os.path.join(self._base_folder, desc_filename), 'rb'))
-        next(fid)
-        for line in fid:
-            split_line = line.strip().split(',')
-            if 'real' in self._dataset:
-                desc_file['class'].append(split_line[0].split('.')[0].split('-')[1])
-            else:
-                desc_file['class'].append(split_line[0].split('.')[0][:-3])
-            desc_file['start'].append(int(np.floor(float(split_line[1])*self._frame_res)))
-            desc_file['end'].append(int(np.ceil(float(split_line[2])*self._frame_res)))
-            desc_file['ele'].append(int(float(split_line[3])))
-            desc_file['azi'].append(int(float(split_line[4])))
-            if self._dataset[0] is 'm':
-                if 'real' in self._dataset:
-                    desc_file['ang_vel'].append(int(float(split_line[5])))
-                    desc_file['dist'].append(float(split_line[6]))
-                else:
-                    desc_file['ele_dir'].append(int(float(split_line[5])))
-                    desc_file['azi_dir'].append(int(float(split_line[6])))
-                    desc_file['ang_vel'].append(int(float(split_line[7])))
-                    desc_file['dist'].append(float(split_line[8]))
-            else:
-                desc_file['dist'].append(float(split_line[5]))
-        fid.close()
-        return desc_file
-
     def get_list_index(self, azi, ele):
         azi = (azi - self._azi_list[0]) // 10
         ele = (ele - self._ele_list[0]) // 10
@@ -229,48 +195,6 @@ class FeatureClass:
         deg_list = rad_list * 180 / np.pi
         return deg_list
 
-    def _get_doa_labels_regr(self, _desc_file):
-        azi_label = self._default_azi*np.ones((self._max_frames, len(self._unique_classes)))
-        ele_label = self._default_ele*np.ones((self._max_frames, len(self._unique_classes)))
-        for i, ele_ang in enumerate(_desc_file['ele']):
-            start_frame = _desc_file['start'][i]
-            if start_frame > self._max_frames:
-                continue
-            end_frame = self._max_frames if _desc_file['end'][i] > self._max_frames else _desc_file['end'][i]
-            nb_frames = end_frame - start_frame
-            azi_ang = _desc_file['azi'][i]
-            class_ind = self._unique_classes[_desc_file['class'][i]]
-            if self._dataset[0] is 'm':
-                if 'real' in self._dataset:
-                    se_len_s = nb_frames / self._frame_res
-                    azi_trajectory = np.floor(
-                        np.linspace(azi_ang, azi_ang+_desc_file['ang_vel'][i]*se_len_s, nb_frames)
-                    )
-                    azi_ang = self.wrapTo180(azi_trajectory)
-
-                else:
-                    start_xyz = self.sph2cart(azi_ang*np.pi/180, ele_ang*np.pi/180, 1)
-                    direction_xyz = self.sph2cart(_desc_file['azi_dir'][i]*np.pi/180, _desc_file['ele_dir'][i]*np.pi/180, 1)
-
-                    rot_vec = self.scaled_cross_product(start_xyz, direction_xyz)
-                    xyz_trajectory = self.get_trajectory(
-                        nb_frames/self._frame_res, start_xyz, rot_vec, _desc_file['ang_vel'][i]*np.pi/180)
-
-                    tmp_azi_ang, tmp_ele_ang, tmp_r = self.cart2sph(
-                        xyz_trajectory[:, 0], xyz_trajectory[:, 1], xyz_trajectory[:, 2])
-                    org_time = np.linspace(0, 1, tmp_azi_ang.shape[0])
-                    new_time = np.linspace(0, 1, end_frame - start_frame)
-                    azi_ang = np.interp(new_time, org_time, tmp_azi_ang * 180/np.pi)
-                    ele_ang = np.interp(new_time, org_time, tmp_ele_ang * 180/np.pi)
-
-            if np.sum(ele_ang >= self._ele_list[0]) and np.sum(ele_ang <= self._ele_list[-1]):
-                azi_label[start_frame:end_frame, class_ind] = azi_ang
-                ele_label[start_frame:end_frame, class_ind] = ele_ang
-            else:
-                # print(start_xyz, direction_xyz)
-                print('bad_angle {} {}'.format(azi_ang, ele_ang))
-        doa_label_regr = np.concatenate((azi_label, ele_label), axis=1)
-        return doa_label_regr
 
     def _get_se_labels(self, _desc_file):
         se_label = np.zeros((self._max_frames, len(self._unique_classes)))
@@ -280,17 +204,6 @@ class FeatureClass:
             se_label[start_frame:end_frame + 1, self._unique_classes[se_class]] = 1
         return se_label
 
-    def _get_labels_for_file(self, label_filename, _desc_file):
-        label_mat = None
-        pdb.set_trace()
-        if self._mode is 'regr':
-            se_label = self._get_se_labels(_desc_file)
-            doa_label = self._get_doa_labels_regr(_desc_file)
-            label_mat = np.concatenate((se_label, doa_label), axis=1)
-        else:
-            print("The supported modes are 'regr', you provided {}".format(self._mode))
-        print(label_mat.shape)
-        np.save(os.path.join(self._label_dir, label_filename), label_mat)
 
     # ------------------------------- EXTRACT FEATURE AND PREPROCESS IT -------------------------------
     def extract_all_feature(self, extra=''):

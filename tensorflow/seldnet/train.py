@@ -8,7 +8,7 @@ import datetime
 import cls_feature_class, cls_data_generator
 from glob import glob
 from tensorflow.keras.optimizers import Adam
-
+from tqdm import tqdm
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 def getparam():
@@ -112,7 +112,6 @@ def main(config):
                             nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
                             rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size],
                             weights=list_element_to_float(config.loss_weights.split(',')))
-    # pdb.set_trace()
 
     callbacks = [
             # ReduceLROnPlateau(monitor='val_loss',
@@ -133,15 +132,25 @@ def main(config):
 
         ]
     
-    model.compile(optimizer=Adam(learning_rate=config.lr), loss=['binary_crossentropy','sparse_categorical_crossentropy'], loss_weights=list_element_to_float(config.loss_weights.split(',')), metrics=['acc'])
+    # model.compile(optimizer=Adam(learning_rate=config.lr), loss=['binary_crossentropy','sparse_categorical_crossentropy'], loss_weights=list_element_to_float(config.loss_weights.split(',')), metrics=['acc'])
 
-    model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
+    # model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
+    optimizer = Adam(learning_rate=config.lr)
+    startepoch = 0
+    weight = list_element_to_float(config.loss_weights.split(','))
+    for epoch in range(startepoch, config.epoch):
+        with tqdm(trainset) as pbar:
+            for idx, (x, y) in enumerate(pbar):
+                with tf.GradientTape() as tape:
+                    tape.watch(x)
+                    logits = model(x, training=True)
+                    sedloss = tf.keras.losses.BinaryCrossentropy()(y[0], logits[0]) * weight[0]
+                    doaloss = tf.keras.losses.SparseCategoricalCrossentropy()(y[1], logits[1]) * weight[1]
+                    loss = sedloss + doaloss
+                
+                grads = tape.gradient(loss, model.trainable_weights)
+                optimizer.apply_gradients(zip(grads, model.trainable_weights))
     
-    pdb.set_trace()
-    for i,j in trainset:
-        print(model(i[0][tf.newaxis,...], training=False))
-        print(j[0])
-    pdb.set_trace()
 
 if __name__ == "__main__":
     arg = getparam()
