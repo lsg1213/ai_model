@@ -16,8 +16,9 @@ from tensorflow.keras import Model
 import pdb
 
 def get_model(data_in, data_out, dropout_rate, nb_cnn2d_filt, pool_size,
-                                rnn_size, fnn_size, weights):
+                                rnn_size, fnn_size, config):
     # model definition
+    pdb.set_trace()
     spec_start = Input(shape=(data_in[-3], data_in[-2], data_in[-1]))
     spec_cnn = Permute((2,3,1))(spec_start)
     spec_cnn = spec_cnn

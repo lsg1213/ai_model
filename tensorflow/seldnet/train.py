@@ -24,6 +24,7 @@ def getparam():
     args.add_argument('--batch', type=int, default=32)
     args.add_argument('--seq_len', type=int, default=64)
     args.add_argument('--nfft', type=int, default=512)
+    args.add_argument('--window_size', type=int, default=19)
     
     args.add_argument('--dropout_rate', type=float, default=0.0)
     args.add_argument('--nb_cnn2d_filt', type=int, default=64)
@@ -31,6 +32,7 @@ def getparam():
     args.add_argument('--rnn_size', type=str, default='128,128')
     args.add_argument('--fnn_size', type=int, default=128)
     args.add_argument('--loss_weights', type=str, default='1,50')
+    args.add_argument('--mode', type=str, default='frame', choices=['frame', 'sample'])
 
 
     return args.parse_args()
@@ -89,7 +91,7 @@ def get_data(config, train=True):
     data_in = (config.batch, gen_cls._2_nb_ch, gen_cls.nb_frames_file, gen_cls.feat_len)
     data_out = (config.batch, (1, gen_cls.nb_classes))
     
-    _data = tf.data.Dataset.from_tensor_slices(data)
+    _data = tf.data.Dataset.from_tensor_slices(data.astype(np.float32))
     dataset = tf.data.Dataset.zip((_data, label))
     if train:
         dataset = dataset.repeat(1).shuffle(buffer_size=data.shape[0])
@@ -110,8 +112,7 @@ def main(config):
 
     model = models.get_model(data_in=data_in, data_out=data_out, dropout_rate=config.dropout_rate,
                             nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
-                            rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size],
-                            weights=list_element_to_float(config.loss_weights.split(',')))
+                            rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size], config=config)
 
     callbacks = [
             # ReduceLROnPlateau(monitor='val_loss',
@@ -141,6 +142,8 @@ def main(config):
     for epoch in range(startepoch, config.epoch):
         with tqdm(trainset) as pbar:
             for idx, (x, y) in enumerate(pbar):
+                if config.mode == 'frame':
+                    x = sample_to_frame(x, config)
                 with tf.GradientTape() as tape:
                     tape.watch(x)
                     logits = model(x, training=True)
@@ -151,6 +154,28 @@ def main(config):
                 grads = tape.gradient(loss, model.trainable_weights)
                 optimizer.apply_gradients(zip(grads, model.trainable_weights))
     
+def sample_to_frame(sample, config):
+    # sample = (batch, channel, frame, feature)
+    sample = tf.transpose(sample, [0,2,3,1]) # (batch, frame, feature, channel)
+    if config.mode == 'sample':
+        return sample
+
+    def _sample_to_frame(sample):
+        # sample = (frame, feature, channel)
+        res = tf.zeros(sample.shape[:1] + (config.window_size,) + sample.shape[1:], dtype=sample.dtype)
+        
+        for i, j in enumerate(sample):
+            try:
+                start = tf.maximum(i-(config.window_size // 2), 0).numpy()
+                end = tf.minimum(i+(config.window_size // 2), len(sample)).numpy()
+                tf.tensor_scatter_nd_update(res[i][:], tf.range((config.window_size // 2) + (start - i),(config.window_size // 2) + (end - i))[...,tf.newaxis], sample[start:end])
+            except:
+                pdb.set_trace()
+        return res
+
+    if config.mode == 'frame':
+        out = tf.map_fn(_sample_to_frame, sample)
+        return out
 
 if __name__ == "__main__":
     arg = getparam()
