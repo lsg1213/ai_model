@@ -25,11 +25,11 @@ class testDataset(Dataset):
         self.config = config
         self.accel = torch.from_numpy(np.array(self.flatten(accel)))
         self.sound = torch.from_numpy(np.array(self.flatten(sound)))
-        self.split = config.len // 2 # splited out len, must be <= config.len
-        if self.split == 0:
-            self.split = 1
+        
+
+        self.split_num = config.len // 2
         self.mode = 'center' # split place of out
-        self.index = torch.arange(0, len(self.sound) - (config.b + config.len + config.latency + (config.len // 2) + (self.split // 2)), self.split)
+        self.index = torch.arange(0, len(self.sound), self.split_num)
         # self.accel = self.split(self.accel)
         # self.sound = self.split(self.sound)
 
@@ -40,18 +40,20 @@ class testDataset(Dataset):
         return len(self.index)
 
     def __getitem__(self, idx):
+        index = self.index[idx]
         frame_size = self.config.b + self.config.len
-        return self.accel[self.index[idx]:self.index[idx] + frame_size], self.sound[self.index[idx] + frame_size + self.config.latency + (self.config.len // 2) - (self.split // 2): self.index[idx] + frame_size + self.config.latency + (self.config.len // 2) + (self.split // 2)]
-
-def sync(accel, sound, config, split = True):
-    if split:
-        accel = accel[self.config.b + self.config.len + self.config.latency + (self.config.len // 2) - (self.split // 2):]
-        sound = sound[:-(self.config.b + self.config.len + self.config.latency + (self.config.len // 2) - (self.split // 2))]
-    else:
-        accel = accel[self.config.b + self.config.len + self.config.latency:],
-        sound = sound[:-(self.config.b + self.config.len + self.config.latency)]
-    return accel, sound
+        sound_index = index + frame_size + self.config.latency + (self.config.len // 2)
         
+        accel = self.accel[index:index + frame_size]
+        sound = self.sound[sound_index - (self.split_num // 2):sound_index + (self.split_num // 2)]
+        
+        if accel.size(0) != frame_size:
+            accel = torch.cat([accel,torch.zeros((frame_size - accel.size(0), accel.size(1)), device=accel.device, dtype=accel.dtype)])
+        if sound.size(0) != self.split_num:
+            sound = torch.cat([sound,torch.zeros((self.split_num - sound.size(0), sound.size(1)), device=sound.device, dtype=sound.dtype)])
+        return accel.transpose(0,1), sound
+
+
 class makeDataset(Dataset):
     def __init__(self, accel, sound, config, train=True):
         self.config = config
