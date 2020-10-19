@@ -34,11 +34,9 @@ class testDataset(Dataset):
         
         self.mode = 'end'
 
-        self.split_num = config.len // 2
+        self.split_num = config.split_number
         self.mode = 'center' # split place of out
         self.index = torch.arange(0, len(self.sound), self.split_num)
-        if config.future:
-            self.sound_index = torch.arange()
         # self.accel = self.split(self.accel)
         # self.sound = self.split(self.sound)
 
@@ -50,8 +48,9 @@ class testDataset(Dataset):
 
     def __getitem__(self, idx):
         index = self.index[idx]
+        # 나중에 config.len은 빼도록
         frame_size = self.config.b + self.config.len
-        sound_index = index + frame_size + self.config.latency + (self.config.len // 2)
+        sound_index = index + frame_size + self.config.latency + ((self.config.len - self.split_num) // 2)
         
         accel = self.accel[index:index + frame_size]
         sound = self.sound[sound_index - (self.split_num // 2):sound_index + (self.split_num // 2)]
@@ -59,6 +58,7 @@ class testDataset(Dataset):
         if accel.size(0) != frame_size:
             accel = torch.cat([accel,torch.zeros((frame_size - accel.size(0), accel.size(1)), device=accel.device, dtype=accel.dtype)])
         if sound.size(0) != self.split_num:
+            pdb.set_trace()
             sound = torch.cat([sound,torch.zeros((self.split_num - sound.size(0), sound.size(1)), device=sound.device, dtype=sound.dtype)])
         return accel.transpose(0,1), sound
 

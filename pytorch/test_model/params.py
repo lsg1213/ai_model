@@ -27,7 +27,12 @@ def get_arg(known=[]):
     args.add_argument('--nmels', type=int, default=80)
     args.add_argument('--nfft', type=int, default=512)
     args.add_argument('--loss_weight', type=float, default=0.5)
-    return args.parse_known_args(known)[0]
+    args.add_argument('--split_number', type=int, default=-1)
+    arg =  args.parse_known_args(known)[0]
+    if arg.split_number == -1:
+        arg.split_number = arg.len // 2
+    
+    return arg
 
 
 if __name__ == "__main__":
