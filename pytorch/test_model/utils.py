@@ -46,8 +46,7 @@ class makeDataset(Dataset):
     def shuffle(self):
         if self.config.feature in ('wav', 'mel'):
             self.perm = torch.randperm(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
-        # elif self.config.feature == 'mel':
-        #     self.perm = torch.randperm(len(self.accel) - 1 if self.config.future else len(self.accel))
+
 
     def __len__(self):
         return self.len
@@ -56,9 +55,10 @@ class makeDataset(Dataset):
         idx = self.perm[idx]
         if self.config.feature in ['wav', 'mel']:
             index = idx + self.config.latency
-            accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
+            frame_size = self.config.b + self.config.len
+            accel = self.accel[idx:idx + frame_size].transpose(0,1)
             if self.config.future:
-                sound = self.sound[index + self.config.len:index + 2 * self.config.len]
+                sound = self.sound[index + frame_size:index + frame_size + config.len]
             else:
                 sound = self.sound[index:index + self.config.len]
         elif self.config.feature == 'mel':
