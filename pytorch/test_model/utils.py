@@ -55,10 +55,13 @@ class makeDataset(Dataset):
         idx = self.perm[idx]
         if self.config.feature in ['wav', 'mel']:
             index = idx + self.config.latency
-            frame_size = self.config.b + self.config.len
-            accel = self.accel[idx:idx + frame_size].transpose(0,1)
+            frame_size = self.config.b
             if self.config.future:
-                sound = self.sound[index + self.config.len:index + 2 * self.config.len]
+                frame_size += self.config.len
+            accel = self.accel[idx:idx + frame_size].transpose(0,1)
+            
+            if self.config.future:
+                sound = self.sound[index + frame_size:index + frame_size + self.config.len]
             else:
                 sound = self.sound[index:index + self.config.len]
         elif self.config.feature == 'mel':

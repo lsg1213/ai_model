@@ -145,6 +145,8 @@ def main(config):
                 sound = sound.to(device).type(torch.float64)
                 optimizer.zero_grad()
                 sound = sound.to(device)
+                if config.subtract:
+                    sound = - sound
                 y = model(accel)
                 # if config.feature == 'mel':
                 #     y = meltowav(y, config)
@@ -152,7 +154,7 @@ def main(config):
                     y_p = conv_with_S(y, transfer_f, config)
                 else:
                     y_p = y
-                loss = criterion(sound - y_p.type(sound.dtype), torch.zeros_like(y_p))
+                loss = criterion(sound, y_p.type(sound.dtype))
                 if config.diff:
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
@@ -184,6 +186,8 @@ def main(config):
                     # if config.feature == 'mel':
                     #     sound = wavtomel(sound, config)
                     sound = sound.to(device)
+                    if config.subtract:
+                        sound = - sound
                     optimizer.zero_grad()
                     y = model(accel)
                     # if config.feature == 'mel':
@@ -193,7 +197,7 @@ def main(config):
                     else:
                         y_p = y
 
-                    loss = criterion(sound - y_p, torch.zeros_like(y_p))
+                    loss = criterion(sound, y_p)
                     # diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
                     # _, preds = torch.max(y_p, 1)
                     total_loss = loss.item()

@@ -48,19 +48,28 @@ class testDataset(Dataset):
 
     def __getitem__(self, idx):
         index = self.index[idx]
-        # 나중에 config.len은 빼도록
-        frame_size = self.config.b + self.config.len
-        sound_index = index + frame_size + self.config.latency + ((self.config.len - self.split_num) // 2)
+        frame_size = self.config.b
+        if self.config.future:
+            frame_size += self.config.len
+        # sound_index = index + frame_size + self.config.latency + (self.config.len // 2)
+        sound_index = index + frame_size + self.config.latency
         
         accel = self.accel[index:index + frame_size]
-        sound = self.sound[sound_index - (self.split_num // 2):sound_index + (self.split_num // 2)]
         
+        sound = self.split(self.sound[sound_index:sound_index + self.config.len], self.len // 2 - self.split_number, self.len // 2 + self.split_number)
         if accel.size(0) != frame_size:
             accel = torch.cat([accel,torch.zeros((frame_size - accel.size(0), accel.size(1)), device=accel.device, dtype=accel.dtype)])
         if sound.size(0) != self.split_num:
-            pdb.set_trace()
             sound = torch.cat([sound,torch.zeros((self.split_num - sound.size(0), sound.size(1)), device=sound.device, dtype=sound.dtype)])
         return accel.transpose(0,1), sound
+
+    def split(self, data, start, end):
+        if len(data.shape) == 2:
+            return data[start:end]
+        elif len(data.shape) == 3:
+            return data[:,start:end]
+
+
 
 
 class makeDataset(Dataset):
@@ -152,7 +161,7 @@ def dBA_metric(y, gt, plot=True):
     e = gt - y
     Tn = y.shape[0]
     K = 8
-    M = 8
+    M = y.shape[-1]
     """Post processing : performance metric and plots"""
     p_ref = 20e-6
     fs = 2000
