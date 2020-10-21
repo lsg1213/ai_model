@@ -56,7 +56,7 @@ class testDataset(Dataset):
         
         accel = self.accel[index:index + frame_size]
         
-        sound = self.split(self.sound[sound_index:sound_index + self.config.len], self.len // 2 - self.split_number, self.len // 2 + self.split_number)
+        sound = self.split(self.sound[sound_index:sound_index + self.config.len], self.config.len // 2 - (self.config.split_number // 2), self.config.len // 2 + (self.config.split_number // 2))
         if accel.size(0) != frame_size:
             accel = torch.cat([accel,torch.zeros((frame_size - accel.size(0), accel.size(1)), device=accel.device, dtype=accel.dtype)])
         if sound.size(0) != self.split_num:
