@@ -54,7 +54,7 @@ def get_data(config, train=True):
     dataset = tf.data.Dataset.zip((_data, label))
     if train:
         dataset = dataset.repeat(1).shuffle(buffer_size=data.shape[0])
-        dataset = dataset.batch(config.batch, drop_remainder=True)
+        dataset = dataset.batch(config.batch, drop_remainder=False)
         dataset = dataset.prefetch(AUTOTUNE)
     else:
         dataset = dataset.batch(config.batch, drop_remainder=False)
@@ -77,16 +77,14 @@ def get_1_from_frame(fdata, config):
     
     data = tf.map_fn(unique, tf.where(fdata > config.th, fdata, tens))
     if tf.rank(data) == 1:
-        return tf.cast(tf.ones((config.batch,), dtype=fdata.dtype) * 10, dtype=tf.int64)
+        return tf.cast(tf.ones((data.shape[0],), dtype=fdata.dtype) * 10, dtype=tf.int64)
     else:
         data = data[:-1]
-        return tf.cast(tf.ones((config.batch,), dtype=fdata.dtype) * tf.sort(data)[-1], dtype=tf.int64)
+        return tf.cast(tf.ones((data.shape[0],), dtype=fdata.dtype) * tf.sort(data)[-1], dtype=tf.int64)
 
 
 def main(config):
     os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
-    model_dir = 'models/'
-    create_folder(model_dir)
     trainset, data_in, data_out = get_data(config)
     testset, _, _ = get_data(config, train=False)
     tensorboard_path = 'tensorboard_log/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -162,8 +160,11 @@ def main(config):
                 sedpred = tf.cast(get_1_from_frame(sedpred, config), dtype=sedlabel.dtype)
                 doapred = tf.cast(get_1_from_frame(doapred, config), dtype=label.dtype)
                 sedpred = tf.cast(sedpred != 10, dtype=sedpred.dtype)
-                sedacc.update_state(sedlabel, sedpred)
-                doaacc.update_state(label, doapred)
+                try:
+                    sedacc.update_state(sedlabel, sedpred)
+                    doaacc.update_state(label, doapred)
+                except:
+                    pdb.set_trace()
                 
                 pbar.set_postfix(epoch=f'{epoch:3}', val_loss=f'{loss.numpy():0.4}', val_doaacc=f'{doaacc.result().numpy():0.4}', val_sedacc=f'{sedacc.result().numpy():0.4}')
         if maxacc < doaacc.result().numpy():
