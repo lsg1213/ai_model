@@ -12,7 +12,7 @@ for nffto in [512]: # For now use 512 point FFT. Once you get the code running, 
 
         # Extract features and normalize them
         feat_cls.extract_all_feature()
-        feat_cls.preprocess_features()
+        # feat_cls.preprocess_features()
 
         # # Extract labels in regression mode
         # feat_cls.extract_all_labels('regr', 0)

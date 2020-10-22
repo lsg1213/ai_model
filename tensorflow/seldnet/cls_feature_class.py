@@ -10,6 +10,7 @@ from sklearn import preprocessing
 import joblib
 from IPython import embed
 import matplotlib.pyplot as plot
+from concurrent.futures import ThreadPoolExecutor
 plot.switch_backend('agg')
 
 
@@ -20,9 +21,11 @@ class FeatureClass:
         if train:
             self._aud_dir = os.path.join(self._base_folder, 'train_x.joblib')
             self._desc_dir = os.path.join(self._base_folder, 'train_y.joblib')
+            self.f_dir = os.path.join(self._base_folder, 'framelabel/train_y_frame.joblib')
         else:
             self._aud_dir = os.path.join(self._base_folder, 'test_x.joblib')
             self._desc_dir = os.path.join(self._base_folder, 'test_y.joblib')
+            self.f_dir = os.path.join(self._base_folder, 'framelabel/test_y_frame.joblib')
 
         self.train = train
         # Output directories
@@ -94,11 +97,39 @@ class FeatureClass:
             spectra[ind] = np.fft.fft(aud_frame, n=self._nfft, axis=0, norm='ortho')[:nb_bins, :]
         return spectra
 
+    def frametowindow(self, flabel):
+        # flabel (alllabel,)
+        window = np.zeros((self._max_frames,), dtype=np.int8)
+        flabel = flabel.astype(np.int8)
+        for ind in range(self._max_frames):
+            start_ind = ind * self._hop_len
+            frames = flabel[start_ind + np.arange(0, self._win_len)]
+            la = np.unique(frames)
+            window[ind] = 10 if len(la) == 1 else sorted(la)[0]
+        return window
+
+    def label_padding(self, labels):
+        if len(labels) < self._audio_max_len_samples:
+            zero_pad = np.ones((self._audio_max_len_samples - len(labels))) * 10
+            labels = np.concatenate((labels, zero_pad))
+        elif len(labels) > self._audio_max_len_samples:
+            labels = labels[:self._audio_max_len_samples]
+        return labels
+
     def _extract_spectrogram_for_file(self, audio_filename):
         audio_in, fs = self._load_audio(audio_filename)
-        
-        audio_spec = np.array(list(map(self._spectrogram, audio_in)))
-        joblib.dump(audio_spec.reshape(audio_spec.shape[0], self._max_frames, -1), open(os.path.join(self._feat_dir, audio_filename.split('/')[-1]), 'wb'))
+        flabel = joblib.load(open(self.f_dir, 'rb'))
+
+        with ThreadPoolExecutor() as pool:
+            flabel = list(pool.map(self.label_padding, flabel))
+        # audio_spec = np.array(list(map(self._spectrogram, audio_in)))
+        from time import time
+        st = time()
+        with ThreadPoolExecutor(max_workers=80) as pool:
+            flabel_spec = np.array(list(map(self.frametowindow, flabel)))
+        print(time() - st)
+        # joblib.dump(audio_spec.reshape(audio_spec.shape[0], self._max_frames, -1), open(os.path.join(self._feat_dir, audio_filename.split('/')[-1]), 'wb'))
+        joblib.dump(flabel_spec, open(os.path.join('/'.join(self.f_dir.split('/')[:-1]), os.path.basename(self.f_dir).split('frame')[0] + 'window.joblib'), 'wb'))
 
     def get_list_index(self, azi, ele):
         azi = (azi - self._azi_list[0]) // 10
@@ -321,7 +352,7 @@ class FeatureClass:
         )
 
     def get_label_dir(self, mode=None, weakness=None, extra=''):
-        return '/'.join(self._desc_dir.split('/')[:-1])
+        return '/'.join(self._desc_dir.split('/')[:-1]), '/'.join(self.f_dir.split('/')[:-1])
 
     def get_normalized_wts_file(self, extra=''):
         return os.path.join(

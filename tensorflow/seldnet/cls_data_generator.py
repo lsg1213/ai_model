@@ -10,17 +10,20 @@ class DataGenerator(object):
         self.config = config
         self.shuffle = shuffle
         self.feat_cls = cls_feature_class.FeatureClass(config.nfft)
-        self.label_dir = self.feat_cls.get_label_dir()
+        self.label_dir, self.flabel_dir = self.feat_cls.get_label_dir()
         self.feat_dir = self.feat_cls.get_unnormalized_feat_dir()
         
         if train:
             self.data = [joblib.load(open(i,'rb')) for i in sorted(glob(self.feat_dir + '/*train_x*'))]
-            self.label = [joblib.load(open(i,'rb')) for i in sorted(glob(self.label_dir + '/*train_y*'))]
+            self.label = [joblib.load(open(i,'rb')) for i in sorted(glob(self.label_dir + '/*train_y.*'))]
+            self.flabel = [joblib.load(open(i,'rb')) for i in sorted(glob(self.flabel_dir + '/*train_y_window*'))]
         else:
             self.data = [joblib.load(open(i,'rb')) for i in sorted(glob(self.feat_dir + '/*test_x*'))]
-            self.label = [joblib.load(open(i,'rb')) for i in sorted(glob(self.label_dir + '/*test_y*'))]
+            self.label = [joblib.load(open(i,'rb')) for i in sorted(glob(self.label_dir + '/*test_y.*'))]
+            self.flabel = [joblib.load(open(i,'rb')) for i in sorted(glob(self.flabel_dir + '/*test_y_window*'))]
         self.data = [x for y in self.data for x in y]
         self.label = [x for y in self.label for x in y]
+        self.flabel = [x for y in self.flabel for x in y]
         
         self.filenames_list = tf.range(len(self.data))
         self.nb_frames_file = len(self.data[0])
@@ -55,39 +58,6 @@ class DataGenerator(object):
             )
         )
 
-    def get_data_sizes(self):
-        raise ValueError('Deprecated')
-
-    def get_total_batches_in_data(self):
-        return self.nb_total_batches
-
-    def generate(self):
-        while True:
-            if self.shuffle:
-                self.perm = tf.random.shuffle(self.perm)
-            self.circ_buf_feat = deque()
-            self.circ_buf_label = deque()
-
-            file_cnt = 0
-            for i in range(self.nb_total_batches):
-
-
-                while len(self.circ_buf_feat) < self.batch_seq_len:
-                    temp_feat = self.data[self.perm[file_cnt]]
-                    temp_label = self.label[self.perm[file_cnt]]
-                    for row_cnt, row in enumerate(temp_feat):
-                        self.circ_buf_feat.append(row)
-                        pdb.set_trace()
-                        self.circ_buf_label.append(temp_label[row_cnt])
-
-                feat = tf.zeros((self.batch_seq_len, self.feat_len * self._2_nb_ch), dtype=tf.dtypes.float32)
-                label = tf.zeros((self.batch_seq_len, self.label_len), dtype=tf.dtypes.float32)
-                for j in range(self.batch_seq_len):
-                    feat[j,:] = self.circ_buf_feat.popleft()
-                    label[j,:] = self.circ_buf_label.popleft()
-                feat = tf.reshape(feat, (self.batch_seq_len, self.feat_len, self._2_nb_ch))
-
-                pdb.set_trace()
 def getparam():
     args = argparse.ArgumentParser()
     args.add_argument('--name', type=str, default='test')

@@ -4,6 +4,7 @@ Script for util functions
 import os, joblib, pdb
 import numpy as np
 from sklearn import preprocessing
+import tensorflow as tf
 
 def create_folder(folder_name):
     if not os.path.exists(folder_name):
@@ -25,6 +26,28 @@ def spectrogram(audio, sr, maxlen, nfft, winlen, hoplen, max_frames):
     with fu.ThreadPoolExecutor() as pool:
         res = list(pool.map(_spectrogram, audio))
     return np.array(res)
+
+# def frame_to_window(sample, config):
+#     # sample = (batch, channel, frame, feature)
+#     sample = tf.transpose(sample, [0,2,3,1]) # (batch, frame, feature, channel)
+#     if config.mode == 'sample':
+#         return sample
+
+#     def _sample_to_frame(sample):
+#         # sample = (frame, feature, channel)
+#         res = tf.zeros(sample.shape[:1] + (config.window_size,) + sample.shape[1:], dtype=sample.dtype)
+        
+#         for i, j in enumerate(sample):
+#             start = tf.maximum(i-(config.window_size // 2), 0).numpy()
+#             end = tf.minimum(i+(config.window_size // 2), len(sample)).numpy()
+#             tf.tensor_scatter_nd_update(res[i][:], tf.range((config.window_size // 2) + (start - i),(config.window_size // 2) + (end - i))[...,tf.newaxis], sample[start:end])
+
+#         return res
+
+#     if config.mode == 'frame':
+#         out = tf.map_fn(_sample_to_frame, sample)
+#         return out
+
 
 def preprocess(data_path='/root/datasets/ai_challenge/interspeech20/seld'):
     base_path = data_path
@@ -83,7 +106,12 @@ def preprocess(data_path='/root/datasets/ai_challenge/interspeech20/seld'):
     #     label = joblib.load(path)
     #     joblib.dump(label, open())
 
-        
+def terminateOnNaN(loss):
+    if loss is not None:
+        if np.isnan(loss) or np.isinf(loss):
+            print('Batch %d: Invalid loss, terminating training' % (batch))
+            return True
+    return False
 
 if __name__ == "__main__":
     preprocess()
