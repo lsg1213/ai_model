@@ -17,12 +17,12 @@ def getparam(known=[]):
     
     args.add_argument('--dropout_rate', type=float, default=0.0)
     args.add_argument('--nb_cnn2d_filt', type=int, default=64)
-    args.add_argument('--pool_size', type=str, default='8,8,2')
+    args.add_argument('--pool_size', type=str, default='8,8')
     args.add_argument('--rnn_size', type=str, default='128,128')
     args.add_argument('--fnn_size', type=int, default=128)
     args.add_argument('--loss_weights', type=str, default='1,50')
     args.add_argument('--mode', type=str, default='frame', choices=['frame', 'sample'])
-    args.add_argument('--th', type=float, default=128, help='Threshhold of algorithm for transforming frame to sample label')
-
+    args.add_argument('--thdoa', type=float, default=0.5, help='Threshhold of algorithm for transforming doa frame to sample label')
+    args.add_argument('--thsed', type=float, default=0.5, help='Threshhold of algorithm for transforming sed frame to sample label')
 
     return args.parse_known_args(known)[0]

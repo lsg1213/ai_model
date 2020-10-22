@@ -34,7 +34,7 @@ def angle_to_number(label):
 
 def get_data(config, train=True):
     feat_cls = cls_feature_class.FeatureClass(config.nfft)
-    gen_cls = cls_data_generator.DataGenerator(config, shuffle=train, train=train)
+    gen_cls = cls_data_generator.DataGenerator(config, shuffle=False, train=train)
 
     data = gen_cls.data
     label = np.array(angle_to_number(gen_cls.label))
@@ -62,25 +62,38 @@ def get_data(config, train=True):
     return dataset, data_in, data_out
 
 
-
-def unique(data):
-    return tf.unique(data)[0]
-
 # @tf.function
-def get_1_from_frame(fdata, config):
-    if tf.rank(fdata) > 2 and fdata.shape[-1] > 1:
-        # fdata = (batch, frame, softmax > 1)
-        fdata = tf.reduce_max(fdata,-1)
-    tens = tf.ones(fdata.shape[:2], dtype=fdata.dtype) * 10
-    
-    # fdata = (batch, frame)
-    
-    data = tf.map_fn(unique, tf.where(fdata > config.th, fdata, tens))
-    if tf.rank(data) == 1:
-        return tf.cast(tf.ones((data.shape[0],), dtype=fdata.dtype) * 10, dtype=tf.int64)
+def doaunique(_data):
+    # (data)
+    data = tf.unique(_data)[0] # (unique)
+    if len(data.shape) == 1:
+        return tf.convert_to_tensor(data)
     else:
         data = data[:-1]
-        return tf.cast(tf.ones((data.shape[0],), dtype=fdata.dtype) * tf.sort(data)[-1], dtype=tf.int64)
+        return tf.sort(data)[-1] 
+
+def sedunique(data):
+    data = tf.unique(data)[0]
+    if len(data) == 1:
+        return tf.zeros(1, dtype=data.dtype)
+    else:
+        return tf.ones(1, dtype=data.dtype)
+
+def get_1_from_frame(fdata, thdoa, thsed):
+    if tf.rank(fdata) > 2 and fdata.shape[-1] > 1:
+        tens = tf.ones(fdata.shape[:2], dtype=tf.int64) * 10
+        # fdata = (batch, frame, softmax > 1)
+        argmax = tf.argmax(fdata,-1) # argmax = (batch, frame label)
+        fdata = tf.reduce_max(fdata,-1) # armax = (batch, frame score)
+        data = tf.map_fn(doaunique, tf.where(tf.cast(fdata, dtype=tf.float32) > thdoa, argmax, tens))
+
+    elif tf.rank(fdata) == 2:
+        zeros = tf.zeros(fdata.shape[:2], dtype=tf.int64)
+        # fdata = (batch, frame), 있다 없다
+        argmax = tf.round(fdata)
+        data = tf.map_fn(sedunique, tf.where(tf.cast(fdata, dtype=tf.float32) > thsed, argmax, zeros))
+        
+    return data
 
 
 def main(config):
@@ -124,8 +137,9 @@ def main(config):
                 if config.mode == 'frame':
                     sedpred = tf.argmax(logits[0], -1) # (batch, framelabel)
                     doapred = logits[1] # (batch, framelabel)
-                sedpred = tf.cast(get_1_from_frame(sedpred, config), dtype=sedlabel.dtype)
-                doapred = tf.cast(get_1_from_frame(doapred, config), dtype=label.dtype)
+                    
+                sedpred = tf.cast(get_1_from_frame(sedpred, config.thdoa, config.thsed), dtype=sedpred.dtype)
+                doapred = tf.cast(get_1_from_frame(doapred, config.thdoa, config.thsed), dtype=doapred.dtype)
                 sedpred = tf.cast(sedpred != 10, dtype=sedpred.dtype)
                 sedacc.update_state(sedlabel, sedpred)
                 doaacc.update_state(label, doapred)
@@ -157,14 +171,12 @@ def main(config):
                 if config.mode == 'frame':
                     sedpred = tf.argmax(logits[0], -1) # (batch, framelabel)
                     doapred = logits[1] # (batch, framelabel)
-                sedpred = tf.cast(get_1_from_frame(sedpred, config), dtype=sedlabel.dtype)
-                doapred = tf.cast(get_1_from_frame(doapred, config), dtype=label.dtype)
+                sedpred = tf.cast(get_1_from_frame(sedpred, config.thdoa, config.thsed), dtype=sedlabel.dtype)
+                doapred = tf.cast(get_1_from_frame(doapred, config.thdoa, config.thsed), dtype=label.dtype)
                 sedpred = tf.cast(sedpred != 10, dtype=sedpred.dtype)
-                try:
-                    sedacc.update_state(sedlabel, sedpred)
-                    doaacc.update_state(label, doapred)
-                except:
-                    pdb.set_trace()
+                
+                sedacc.update_state(sedlabel, sedpred)
+                doaacc.update_state(label, doapred)
                 
                 pbar.set_postfix(epoch=f'{epoch:3}', val_loss=f'{loss.numpy():0.4}', val_doaacc=f'{doaacc.result().numpy():0.4}', val_sedacc=f'{sedacc.result().numpy():0.4}')
         if maxacc < doaacc.result().numpy():
