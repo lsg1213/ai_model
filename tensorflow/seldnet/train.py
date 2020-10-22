@@ -11,6 +11,7 @@ from tensorflow.keras.optimizers import Adam
 from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from params import getparam
+import tensorflow.keras.backend as K
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 
@@ -96,26 +97,7 @@ def main(config):
     model = models.get_model(data_in=data_in, data_out=data_out, dropout_rate=config.dropout_rate,
                             nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
                             rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size], config=config)
-
-    callbacks = [
-            # ReduceLROnPlateau(monitor='val_loss',
-            #                   factor=0.9,
-            #                   patience=1, # 1,
-            #                   mode='min',
-            #                   verbose=1,
-            #                   min_lr=1e-5),
-            # EarlyStopping(monitor='val_loss',
-            #               mode='min',
-            #               patience=10), # 3),
-            ModelCheckpoint(config.name+'.h5',
-                            monitor='doa_out_acc',
-                            mode='max',
-                            save_best_only=True),
-        ]
     
-    # model.compile(optimizer=Adam(learning_rate=config.lr), loss=['binary_crossentropy','sparse_categorical_crossentropy'], loss_weights=list_element_to_float(config.loss_weights.split(',')), metrics=['acc'])
-
-    # model.fit(trainset, epochs=config.epoch, validation_data=testset, batch_size=config.batch, callbacks=callbacks)
     optimizer = Adam(learning_rate=config.lr)
     startepoch = 0
     bce = tf.keras.losses.BinaryCrossentropy()
@@ -124,6 +106,9 @@ def main(config):
     sedacc = tf.keras.metrics.Accuracy()
     doaacc = tf.keras.metrics.Accuracy()
     maxacc = 0.
+    decay_patience = 5
+    decay_num = 0
+    min_lr = 1e-4
     for epoch in range(startepoch, config.epoch):
         with tqdm(trainset) as pbar:
             for idx, (x, y) in enumerate(pbar):
@@ -158,7 +143,7 @@ def main(config):
         sedacc.reset_states()
         doaacc.reset_states()
 
-        with tqdm(trainset) as pbar:
+        with tqdm(testset) as pbar:
             for idx, (x, y) in enumerate(pbar):
                 label = tf.cast(y[0], dtype=tf.int64) # (batch, label)
                 flabel = tf.cast(y[1], dtype=tf.int64) # (batch, frame, label)
@@ -177,8 +162,19 @@ def main(config):
                 sedpred = tf.cast(get_1_from_frame(sedpred, config), dtype=sedlabel.dtype)
                 doapred = tf.cast(get_1_from_frame(doapred, config), dtype=label.dtype)
                 sedpred = tf.cast(sedpred != 10, dtype=sedpred.dtype)
+                sedacc.update_state(sedlabel, sedpred)
+                doaacc.update_state(label, doapred)
                 
                 pbar.set_postfix(epoch=f'{epoch:3}', val_loss=f'{loss.numpy():0.4}', val_doaacc=f'{doaacc.result().numpy():0.4}', val_sedacc=f'{sedacc.result().numpy():0.4}')
+        if maxacc < doaacc.result().numpy():
+            decay_num = 0
+            maxacc = doaacc.result().numpy()
+            tf.keras.models.save_model(model, os.path.join('model_save', f'{epoch}_valacc{doaacc.result().numpy():0.4}.tf'))
+        else:
+            decay_num += 1
+            if decay_num == decay_patience:
+                old_lr = float(K.get_value(optimizer.lr))
+                K.set_value(optimizer.lr, max(old_lr * config.decay, min_lr))
         writer.add_scalar('test/total_loss',loss.numpy(),epoch)
         writer.add_scalar('test/sed_loss',sedloss.numpy(),epoch)
         writer.add_scalar('test/doa_loss',doaloss.numpy(),epoch)

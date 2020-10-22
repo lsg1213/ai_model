@@ -8,7 +8,7 @@ def getparam(known=[]):
     args.add_argument('--epoch', type=int, default=200)
     args.add_argument('--resume', action='store_true')
     args.add_argument('--skip', type=int, default=1)
-    args.add_argument('--decay', type=float, default=1/np.sqrt(2))
+    args.add_argument('--decay', type=float, default=0.9)
     args.add_argument('--db', type=int, default=30)
     args.add_argument('--batch', type=int, default=32)
     args.add_argument('--seq_len', type=int, default=64)
