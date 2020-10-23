@@ -3,7 +3,7 @@ import numpy as np
 def getparam(known=[]):
     args = argparse.ArgumentParser()
     args.add_argument('--name', type=str, default='test')
-    args.add_argument('--lr', type=float, default=0.001)
+    args.add_argument('--lr', type=float, default=0.01)
     args.add_argument('--gpus', type=str, default='-1')
     args.add_argument('--epoch', type=int, default=200)
     args.add_argument('--resume', action='store_true')
@@ -22,7 +22,7 @@ def getparam(known=[]):
     args.add_argument('--fnn_size', type=int, default=128)
     args.add_argument('--loss_weights', type=str, default='1,50')
     args.add_argument('--mode', type=str, default='frame', choices=['frame', 'sample'])
-    args.add_argument('--thdoa', type=float, default=0.5, help='Threshhold of algorithm for transforming doa frame to sample label')
-    args.add_argument('--thsed', type=float, default=0.5, help='Threshhold of algorithm for transforming sed frame to sample label')
+    args.add_argument('--thdoa', type=float, default=0.3, help='Threshhold of algorithm for transforming doa frame to sample label')
+    args.add_argument('--thsed', type=float, default=0.6, help='Threshhold of algorithm for transforming sed frame to sample label')
 
     return args.parse_known_args(known)[0]

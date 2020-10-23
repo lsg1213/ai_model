@@ -34,7 +34,7 @@ def angle_to_number(label):
 
 def get_data(config, train=True):
     feat_cls = cls_feature_class.FeatureClass(config.nfft)
-    gen_cls = cls_data_generator.DataGenerator(config, shuffle=False, train=train)
+    gen_cls = cls_data_generator.DataGenerator(config, shuffle=train, train=train)
 
     data = gen_cls.data
     label = np.array(angle_to_number(gen_cls.label))
@@ -69,8 +69,7 @@ def doaunique(_data):
     if len(data.shape) == 1:
         return tf.convert_to_tensor(data)
     else:
-        data = data[:-1]
-        return tf.sort(data)[-1] 
+        return tf.sort(data[data != 10])[-1]
 
 def sedunique(data):
     data = tf.unique(data)[0]
@@ -80,9 +79,10 @@ def sedunique(data):
         return tf.ones(1, dtype=data.dtype)
 
 def get_1_from_frame(fdata, thdoa, thsed):
+    # 
     if tf.rank(fdata) > 2 and fdata.shape[-1] > 1:
         tens = tf.ones(fdata.shape[:2], dtype=tf.int64) * 10
-        # fdata = (batch, frame, softmax > 1)
+        # fdata = (batch, frame, softmax scores(11))
         argmax = tf.argmax(fdata,-1) # argmax = (batch, frame label)
         fdata = tf.reduce_max(fdata,-1) # armax = (batch, frame score)
         data = tf.map_fn(doaunique, tf.where(tf.cast(fdata, dtype=tf.float32) > thdoa, argmax, tens))
@@ -187,7 +187,9 @@ def main(config):
             decay_num += 1
             if decay_num == decay_patience:
                 old_lr = float(K.get_value(optimizer.lr))
+                print(f'lr decay to {max(old_lr * config.decay, min_lr)}')
                 K.set_value(optimizer.lr, max(old_lr * config.decay, min_lr))
+                decay_num = 0
         writer.add_scalar('test/total_loss',loss.numpy(),epoch)
         writer.add_scalar('test/sed_loss',sedloss.numpy(),epoch)
         writer.add_scalar('test/doa_loss',doaloss.numpy(),epoch)
