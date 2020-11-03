@@ -185,7 +185,7 @@ def dBA_metric(y, gt, plot=True):
     
     if plot:
         for m in range(M):
-            plt.subplot(2, 4, m+1)
+            plt.subplot(2, 4, m+1, figsize=(16,10))
             da = D_A[:,m]
             ea = E_A[:,m]
             plt.plot(F, 10 * np.log10(da), color="red", label=f'D{D_A_dBA_Sum[0, m]:.2f}dBA')
