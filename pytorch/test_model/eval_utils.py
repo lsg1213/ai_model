@@ -4,9 +4,10 @@ import numpy as np
 import scipy
 from scipy.signal import welch, hann
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 import torch.nn.functional as F
 from scipy.io.wavfile import write
-
+from math import ceil
 def data_spread(data,data_length):
     if type(data) == list:
         res = torch.cat([torch.tensor(i[:(len(i) // data_length) * data_length]) for i in data])
@@ -212,9 +213,13 @@ def dBA_metric(y, gt, plot=True):
     #E_result = np.array(np.mean(E_result))
     E_re = np.mean(np.array(E_result))
     
+    gs = gridspec.GridSpec(nrows= int(ceil(M/4)), # row 몇 개 
+                       ncols=4, # col 몇 개 
+                      )
+    fig = plt.figure(figsize=(16,10))
     if plot:
         for m in range(M):
-            plt.subplot(2, 4, m+1)
+            plt.subplot(gs[m])
             da = D_A[:,m]
             ea = E_A[:,m]
             plt.plot(F, 10 * np.log10(da), color="red", label=f'D{D_A_dBA_Sum[0, m]:.2f}dBA')
