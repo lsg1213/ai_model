@@ -55,7 +55,7 @@ class makeDataset(Dataset):
         idx = self.perm[idx]
         if self.config.feature in ['wav', 'mel']:
             index = idx + self.config.latency
-            frame_size = self.config.b
+            frame_size = self.config.len + self.config.b
             if self.config.future:
                 frame_size += self.config.len
             accel = self.accel[idx:idx + frame_size].transpose(0,1)

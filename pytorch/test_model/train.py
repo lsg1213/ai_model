@@ -137,16 +137,19 @@ def main(config):
             melspectrogram = torchaudio.transforms.MelSpectrogram(8192, n_fft=config.nfft, n_mels=config.nmels).to(device)
         with tqdm(train_loader) as pbar:
             for index, (accel, sound) in enumerate(pbar):
-        # for index, (accel, sound) in enumerate(train_loader):
+        # for index, (accel, sound) in enumerate(train_loader)
                 accel = accel.to(device)
                 if config.feature == 'mel':
                     accel = melspectrogram(accel.type(torch.float32)).transpose(1,3)
-                accel = accel.type(torch.float64)
-                sound = sound.to(device).type(torch.float64)
+                accel = accel.type(torch.float32)
+                # if config.model == 'ResNext':
+                #     accel = accel.unsqueeze(1)
+                sound = sound.to(device).type(torch.float32)
                 optimizer.zero_grad()
                 sound = sound.to(device)
                 if config.subtract:
                     sound = - sound
+                pdb.set_trace()
                 y = model(accel)
                 # if config.feature == 'mel':
                 #     y = meltowav(y, config)

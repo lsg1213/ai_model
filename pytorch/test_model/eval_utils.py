@@ -136,11 +136,6 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     
     return out 
 
-import numpy as np
-import scipy
-from scipy.signal import welch, hann, windows
-import matplotlib.pyplot as plt
-
 # FILTERA Generates an A-weighting filter.
 #    FILTERA Uses a closed-form expression to generate
 #    an A-weighting filter for arbitary frequencies.
