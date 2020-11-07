@@ -33,10 +33,10 @@ def main(config):
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
-        name = f'{config.model}_{config.mode}'
+        name = f'{config.model}'
         name += f'_b{config.b}_d{data_length}' if config.feature == 'wav' else ''
         name += f'_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
-        name += f'_feature{config.feature}'
+        name += f'_feature{config.feature}_{config.loss}'
         if config.feature == 'mel':
             name += f'_nfft{config.nfft}'
         if config.ema:
@@ -48,9 +48,11 @@ def main(config):
         if config.future:
             name += '_future'
         if config.diff:
-            name += f'_diff_weight{config.loss_weight}'
+            name += f'_{config.diff}'
+            name += f'_weight{config.loss_weight}'
         if config.subtract:
             name += f'_subtract'
+        
     else:
         name = config.name
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
@@ -63,15 +65,16 @@ def main(config):
         os.makedirs(tensorboard_path)
     writer = SummaryWriter(tensorboard_path)
     print(name)
-    data_path = os.path.join(ABSpath,'data')
-    if not os.path.exists(data_path):
-        data_path = os.path.join(ABSpath, 'datasets/hyundai')
+    # data_path = os.path.join(ABSpath,'data')
+    # if not os.path.exists(data_path):
+    #     data_path = os.path.join(ABSpath, 'datasets/hyundai')
+    data_path = '.'
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
     transfer_f = torch.from_numpy(transfer_f).to(device)
     transfer_f.requires_grad = False
     if config.feature in ['wav', 'mel']:
-        accel_raw_data = pickle.load(open(os.path.join(data_path,'stationary_accel_data.pickle'),'rb'))
-        sound_raw_data = pickle.load(open(os.path.join(data_path,'stationary_sound_data.pickle'),'rb'))
+        accel_raw_data = joblib.load(open(os.path.join(data_path,'stationary_accel_train.joblib'),'rb'))
+        sound_raw_data = joblib.load(open(os.path.join(data_path,'stationary_sound_train.joblib'),'rb'))
     elif config.feature == 'mel':
         data_path = os.path.join(data_path, f'{config.feature}_{config.nfft}_{config.nmels}')
         if not os.path.exists(data_path):
@@ -102,7 +105,13 @@ def main(config):
     
 
     # criterion = nn.MSELoss()
-    criterion = nn.SmoothL1Loss()
+    if config.loss == 'l1':
+        criterion = nn.SmoothL1Loss()
+    elif config.loss == 'l2':
+        criterion = nn.MSELoss()
+    elif config.loss == 'custom':
+        criterion = CustomLoss()
+
     if config.opt == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     elif config.opt == 'sgd':
@@ -149,21 +158,30 @@ def main(config):
                 sound = sound.to(device)
                 if config.subtract:
                     sound = - sound
-                pdb.set_trace()
+                
                 y = model(accel)
                 # if config.feature == 'mel':
                 #     y = meltowav(y, config)
-                if config.mode == 'sj_S':
-                    y_p = conv_with_S(y, transfer_f, config)
-                else:
-                    y_p = y
+                y_p = conv_with_S(y, transfer_f, config)
                 loss = criterion(sound, y_p.type(sound.dtype))
-                if config.diff:
+                if config.diff == 'diff':
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
-                    diff = sound[:,1:,:] - sound[:,:-1,:]
-                    diff_loss = criterion((diff) - ((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype)), torch.zeros_like(diff))
+                    diff = get_diff(sound)
+                    diff_y_p = get_diff(y_p).type(sound.dtype)
+                    diff_loss = criterion(diff, diff_y_p)
                     total_loss = config.loss_weight * loss + diff_loss
+                elif config.diff == 'double':
+                    if y_p.size(1) <= 2:
+                        raise ValueError('Cannot use double difference value for loss')
+                    diff = get_diff(sound)
+                    diff_d = get_diff(diff)
+                    diff_y_p = get_diff(y_p).type(sound.dtype)
+                    diff_y_p_d = get_diff(diff_y_p)
+                    diff_loss = criterion(diff, diff_y_p)
+                    diff_d_loss = criterion(diff_d, diff_y_p_d)
+                    total_loss = config.loss_weight * loss + diff_loss + diff_d_loss
+
                 else:
                     total_loss = loss
                     
@@ -195,10 +213,7 @@ def main(config):
                     y = model(accel)
                     # if config.feature == 'mel':
                     #     y = meltowav(y, config)
-                    if config.mode == 'sj_S':
-                        y_p = conv_with_S(y, transfer_f, config)
-                    else:
-                        y_p = y
+                    y_p = conv_with_S(y, transfer_f, config)
 
                     loss = criterion(sound, y_p)
                     # diff_loss = criterion((y_p[:,1:,:] - y_p[:,:-1,:]).type(sound.dtype), sound[:,1:,:] - sound[:,:-1,:])
