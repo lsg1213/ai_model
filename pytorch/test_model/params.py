@@ -20,7 +20,7 @@ def get_arg(known=[]):
     args.add_argument('--diff', type=str, default='diff', choices=['nodiff', 'diff', 'double'])
     args.add_argument('--subtract', type=bool, default=True)
     args.add_argument('--sr', type=int, default=8192)
-    args.add_argument('--latency', type=int, default=5, help='latency frame numuber between accel and data')
+    args.add_argument('--latency', type=int, default=24, help='latency frame numuber between accel and data')
     args.add_argument('--feature', type=str, default='wav', choices=['wav', 'mel', 'mfcc'])
     args.add_argument('--nmels', type=int, default=80)
     args.add_argument('--nfft', type=int, default=512)

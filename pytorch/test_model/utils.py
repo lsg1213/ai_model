@@ -26,7 +26,11 @@ class CustomLoss(_Loss):
         return customLoss(input, target)
 
 def customLoss(y, y_pred):
-    return ((y - y.mean())*(y_pred - y_pred.mean()).sum() / torch.sqrt((y - y.mean()).pow(2).sum() * (y_pred - y_pred.mean()).pow(2).sum())).mean()
+    vy = y - torch.mean(y)
+    vyy = y_pred - torch.mean(y_pred)
+
+    cost = torch.sum(vy * vyy) / (torch.sqrt(torch.sum(vy ** 2)) * torch.sqrt(torch.sum(vyy ** 2)))
+    return - cost
 
 def data_spread(data, data_length, config):
     '''

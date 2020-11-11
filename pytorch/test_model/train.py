@@ -111,6 +111,8 @@ def main(config):
         criterion = nn.MSELoss()
     elif config.loss == 'custom':
         criterion = CustomLoss()
+        l1 = nn.SmoothL1Loss()
+        config.loss_weight = 1
 
     if config.opt == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -163,7 +165,11 @@ def main(config):
                 # if config.feature == 'mel':
                 #     y = meltowav(y, config)
                 y_p = conv_with_S(y, transfer_f, config)
-                loss = criterion(sound, y_p.type(sound.dtype))
+                if config.loss == 'custom':
+                    loss = criterion(sound, y_p.type(sound.dtype)) + 0.1 * l1(sound, y_p.type(sound.dtype))
+                else:
+                    loss = criterion(sound, y_p.type(sound.dtype))
+                
                 if config.diff == 'diff':
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
@@ -181,10 +187,9 @@ def main(config):
                     diff_loss = criterion(diff, diff_y_p)
                     diff_d_loss = criterion(diff_d, diff_y_p_d)
                     total_loss = config.loss_weight * loss + diff_loss + diff_d_loss
-
                 else:
                     total_loss = loss
-                    
+                
                 total_loss.backward()
                 optimizer.step()
                 # _, preds = torch.max(y_p, 1)
