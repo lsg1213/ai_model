@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn.functional as F
 from scipy.io.wavfile import write
 import concurrent.futures as fu
+import librosa
 
 
 class _Loss(torch.nn.Module):
@@ -24,6 +25,35 @@ class CustomLoss(_Loss):
 
     def forward(self, input, target):
         return customLoss(input, target)
+
+def stft_extractor(n_fft=128, win_length=128, hop_length=128//2):
+    def _get_stft(x):
+        """x should be (time, chan)"""
+        time, chan = x.shape
+        stft = []
+        for i in range(chan):
+            _stft = librosa.stft(x[:, i],
+                                n_fft=n_fft,
+                                win_length=win_length,
+                                hop_length=hop_length)
+            stft.append(_stft[np.newaxis])
+        stft = np.concatenate(stft, axis=0) #(chan, freq, time)
+        return stft
+    return _get_stft
+
+def istft_extractor(win_length=128, hop_length=128//2):
+    def _get_istft(x):
+        """x should be (chan, freq, time)"""
+        chan, freq, time = x.shape
+        stft = []
+        for i in range(chan):
+            _stft = librosa.istft(x[i, :, :],
+                                win_length=win_length,
+                                hop_length=hop_length)
+            stft.append(_stft[np.newaxis])
+        istft = np.concatenate(stft, axis=0) #(chan, freq, time)
+        return istft
+    return _get_istft
 
 def customLoss(y, y_pred):
     vy = y - torch.mean(y)
@@ -51,10 +81,8 @@ class makeDataset(Dataset):
         self.data_length = config.len
         self.device = device
 
-        if self.takebeforetime % self.data_length != 0:
-            raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
         
-        if config.feature in ['wav', 'mel']:
+        if config.feature in ['wav', 'mel', 'stft']:
             self.accel = data_spread(accel, self.data_length, config).to(device)
             self.sound = data_spread(sound, self.data_length, config).to(device)
         elif config.feature == 'mel':
@@ -77,13 +105,12 @@ class makeDataset(Dataset):
 
     def __getitem__(self, idx):
         idx = self.perm[idx]
-        if self.config.feature in ['wav', 'mel']:
-            index = idx + self.config.latency
-            frame_size = self.config.b
-            if self.config.future:
-                frame_size += self.config.len
-            accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
-            sound = self.sound[index + frame_size:index + frame_size + self.config.len]
+        index = idx + self.config.latency
+        frame_size = self.config.b
+        if self.config.future:
+            frame_size += self.config.len
+        accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
+        sound = self.sound[index + frame_size:index + frame_size + self.config.len]
         return accel, sound
 
 def padding(signal, Ls):
@@ -130,3 +157,18 @@ def ema(data, n=2):
         ema[i] = ((j - ema[i-1]) * smoothing_factor) + ema[i-1]
 
     return ema
+
+
+def wavToSTFT(config, device=torch.device('cpu')):
+    def _wavToSTFT(wav):
+        '''wav (channel, time)'''
+        return torch.functional.stft(wav.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 2, return_complex=True)
+    '''output stft (channel, nfft // 2 + 1, time, 2->real,imag)'''
+    return _wavToSTFT 
+
+def STFTToWav(config, device=torch.device('cpu')):
+    def _STFTToWav(stft):
+        '''stft (channel, config.nfft // 2 + 1, time, 2->real,imag)'''
+        return torch.functional.istft(stft.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 2)
+    '''output wav (channel, time)'''
+    return _STFTToWav 

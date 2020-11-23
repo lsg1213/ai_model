@@ -19,4 +19,4 @@ def getdataset(datapath, labelpath, splitratio=0.95):
 
 
 if __name__ == "__main__":
-    data = getdataset('/home/skuser/stationary_sound_data.pickle', '/home/skuser/stationary_sound_data.pickle')
+    data = getdataset('/home/skuser/stationary_accel_data.pickle', '/home/skuser/stationary_sound_data.pickle')

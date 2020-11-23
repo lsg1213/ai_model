@@ -10,7 +10,7 @@ from utils import *
 from torchsummary import summary
 from glob import glob
 from pytorch_model_summary import summary
-import concurrent.futures as fu
+from concurrent.futures import ThreadPoolExecutor
 from params import get_arg
 
 
@@ -145,7 +145,7 @@ def main(config):
     transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
     for epoch in range(startepoch, EPOCH):
-        # train_loss = train(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
+        train_loss = train(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
         
         with torch.no_grad():
             val_loss = train(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
@@ -185,6 +185,9 @@ def train(model, loader, criterion, transfer_f, epoch, config=None, optimizer=No
         model.eval()
     if config.feature == 'mel':
         melspectrogram = torchaudio.transforms.MelSpectrogram(8192, n_fft=config.nfft, n_mels=config.nmels).to(device)
+    elif config.feature == 'stft':
+        stft = wavToSTFT(config, device)
+        istft = STFTToWav(config, device)
     
     if config.loss == 'custom':
         l1 = criterion[1]
@@ -193,18 +196,27 @@ def train(model, loader, criterion, transfer_f, epoch, config=None, optimizer=No
     with tqdm(loader) as pbar:
         for index, (accel, sound) in enumerate(pbar):
     # for index, (accel, sound) in enumerate(loader)
-            accel = accel.to(device)
+            accel = accel.to(device).type(torch.float32)
+
             if config.feature == 'mel':
                 accel = melspectrogram(accel.type(torch.float32)).transpose(1,3)
-            accel = accel.type(torch.float32)
-
+            elif config.feature == 'stft':
+                with ThreadPoolExecutor() as pool:
+                    accel = list(pool.map(stft, accel))
+                accel = torch.stack(accel)
+                accel = torch.cat([accel.real, accel.imag], 1)
+            
+            
             sound = sound.to(device).type(torch.float32)
             sound = sound.to(device)
             if config.subtract:
                 sound = - sound
-            
             y = model(accel)
-
+            if config.feature == 'stft':
+                y = torch.stack([y[:,:y.shape[1]//2],y[:,y.shape[1]//2:]],-1)
+                with ThreadPoolExecutor() as pool:
+                    y = list(pool.map(istft, y))
+                y = torch.stack(y,0).transpose(2,1)
             y_p = conv_with_S(y, transfer_f, config)
             if config.loss == 'custom':
                 loss = criterion(sound, y_p.type(sound.dtype)) + 0.1 * l1(sound, y_p.type(sound.dtype))
@@ -239,7 +251,7 @@ def train(model, loader, criterion, transfer_f, epoch, config=None, optimizer=No
             pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{epoch_loss / (index + 1):0.4}')
             
         epoch_loss /= len(loader)
-    return epoch_loss.item()
+    return epoch_loss
 
 if __name__ == "__main__":
     import sys
