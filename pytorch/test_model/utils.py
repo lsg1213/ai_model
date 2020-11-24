@@ -82,6 +82,9 @@ class IterableDataset(torch.utils.data.IterableDataset):
         self.x = x
         self.y = y
 
+    def __len__(self):
+        return len(self.x)
+
     def __iter__(self):
         worker_info = torch.utils.data.get_worker_info()
         if worker_info is None:  # single-process data loading, return the full iterator
