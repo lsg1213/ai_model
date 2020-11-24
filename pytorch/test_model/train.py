@@ -199,7 +199,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         for index, (accel, sound) in enumerate(pbar):
     # for index, (accel, sound) in enumerate(loader)
             accel = accel.to(device).type(torch.float32)
-            pdb.set_trace()
             if config.feature == 'mel':
                 accel = melspectrogram(accel.type(torch.float32)).transpose(1,3)
             elif config.feature == 'stft':
@@ -208,7 +207,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 accel = torch.stack(accel)
                 accel = torch.cat([accel.real, accel.imag], 1)
             
-            pdb.set_trace()
             sound = sound.to(device).type(torch.float32)
             sound = sound.to(device)
             if config.subtract:
