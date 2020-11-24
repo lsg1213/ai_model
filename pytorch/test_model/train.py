@@ -84,17 +84,9 @@ def main(config):
 
         if accel_raw_data.shape[0] != sound_raw_data.shape[0]:
             raise ValueError(f'length of accel and sound data is not matched, {accel_raw_data.shape}, {sound_raw_data.shape}')
-
     
 
-    # accel_data = dataSplit(accel_raw_data, takebeforetime=config.b, data_length=data_length, expand=True)
-    # sound_data = dataSplit(sound_raw_data, takebeforetime=config.b, data_length=data_length, expand=False)
-    # model = Model(accel_data.shape[1] * accel_data.shape[2], sound_data.shape[1] * sound_data.shape[2]).to(device)
-    dataset = makeDataset(accel_raw_data, sound_raw_data, config, device)
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
     
-
-    # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(3), outch=(frames)
     if config.feature == 'wav':
         model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
     elif config.feature == 'mel':
@@ -102,9 +94,17 @@ def main(config):
     elif config.feature == 'stft':
         model = getattr(models, config.model)((config.nmels, 12), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     print(config.model)
-    train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
+    # train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
+    # val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
     
+    # dataset = makeDataset(accel_raw_data, sound_raw_data, config, device)
+    # train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
+    train_accel = [i[:int(len(i) * 0.9)] for i in accel_raw_data]
+    train_sound = [i[:int(len(i) * 0.9)] for i in sound_raw_data]
+    val_accel = [i[int(len(i) * 0.9):] for i in accel_raw_data]
+    val_sound = [i[int(len(i) * 0.9):] for i in sound_raw_data]
+    train_generator = makeGenerator(train_accel, train_sound, config, device=device)
+    val_generator = makeGenerator(val_accel, val_sound, config, device=device)
 
     # criterion = nn.MSELoss()
     if config.loss == 'l1':
@@ -145,10 +145,12 @@ def main(config):
     transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
     for epoch in range(startepoch, EPOCH):
-        train_loss = train(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
-        
+        train_loader = next(train_generator.next_loader())
+        train_loss = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
+        del train_loader
+        val_loader = next(val_generator.next_loader())
         with torch.no_grad():
-            val_loss = train(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
+            val_loss = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
 
         writer.add_scalar('train/train_loss', train_loss, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
@@ -176,7 +178,7 @@ def main(config):
                 break
     print(name)
 
-def train(model, loader, criterion, transfer_f, epoch, config=None, optimizer=None, device=torch.device('cpu'), train=True):
+def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimizer=None, device=torch.device('cpu'), train=True):
     epoch_loss = 0.
     if train:
         model.train()
@@ -197,7 +199,7 @@ def train(model, loader, criterion, transfer_f, epoch, config=None, optimizer=No
         for index, (accel, sound) in enumerate(pbar):
     # for index, (accel, sound) in enumerate(loader)
             accel = accel.to(device).type(torch.float32)
-
+            pdb.set_trace()
             if config.feature == 'mel':
                 accel = melspectrogram(accel.type(torch.float32)).transpose(1,3)
             elif config.feature == 'stft':
@@ -206,7 +208,7 @@ def train(model, loader, criterion, transfer_f, epoch, config=None, optimizer=No
                 accel = torch.stack(accel)
                 accel = torch.cat([accel.real, accel.imag], 1)
             
-            
+            pdb.set_trace()
             sound = sound.to(device).type(torch.float32)
             sound = sound.to(device)
             if config.subtract:

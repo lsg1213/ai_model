@@ -581,12 +581,14 @@ class efficientnet(nn.Module):
 
 if __name__ == '__main__':
     from params import get_arg
-    config = get_arg([])
+    import sys
+    config = get_arg(sys.argv[1:])
     model = EfficientNet.from_pretrained('efficientnet-b0')
-    config.len = 1000
-    config.b = 1000
-    config.nfft = 2048
-    inputs = torch.randn(4, 12, config.nfft // 2 + 1, config.len + config.b)
+    # config.len = 1000
+    # config.b = 1000
+    # config.nfft = 2048
+    inputs = torch.randn(4, 24, (config.nfft // 2 + 1)*2, int(np.ceil((config.len + config.b) / (config.nfft // 2 + 1)) + 1))
+    pdb.set_trace()
     P = efficientnet((config.nfft // 2 + 1, config.len + config.b), (config.nfft // 2 + 1, config.len), 12, 8, config)(inputs)
 
 

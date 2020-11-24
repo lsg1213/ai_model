@@ -5,7 +5,9 @@ import torch.nn.functional as F
 from scipy.io.wavfile import write
 import concurrent.futures as fu
 import librosa
+import random
 
+feature_list = ['wav', 'mel', 'stft']
 
 class _Loss(torch.nn.Module):
     reduction: str
@@ -73,7 +75,65 @@ def data_spread(data, data_length, config):
 
 def get_diff(data):
     return data[:,1:] - data[:,:-1]
+
+class IterableDataset(torch.utils.data.IterableDataset):
+    def __init__(self, x, y):
+        super(IterableDataset).__init__()
+        self.x = x
+        self.y = y
+
+    def __iter__(self):
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:  # single-process data loading, return the full iterator
+            x = self.x
+            y = self.y
+        else:  # in a worker process
+            # split workload
+            per_worker = int(math.ceil(len(x) / float(worker_info.num_workers)))
+            worker_id = worker_info.id
+            iter_start = worker_id * per_worker
+            iter_end = min(iter_start + per_worker, len(x))
+        return zip(x,y)
+
+class makeGenerator():
+    def __init__(self, accel, sound, config, device=torch.device('cpu')):
+        self.accel = data_spread(accel, config.len, config)
+        self.sound = data_spread(sound, config.len, config)
+        self.config = config
+        self.device = device
+
+        self.batch_size = config.batch
+        self.data_per_epoch = config.data_per_epoch
+
+        self.len = len(self.accel) - config.b - config.len - config.latency
+        if self.config.future:
+            self.len -= self.config.len
+        self.idx = torch.arange(0,self.len,dtype=torch.int32)
     
+    def next_loader(self):
+        x = []
+        y = []
+        while True:
+            random.shuffle(self.idx)
+            for idx in self.idx:
+                index = idx + self.config.latency
+                frame_size = self.config.b
+                if self.config.future:
+                    frame_size += self.config.len
+                x.append(self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1))
+                y.append(self.sound[index + frame_size:index + frame_size + self.config.len])
+                
+                if len(x) >= self.config.data_per_epoch:
+                    x = torch.stack(x,0)
+                    y = torch.stack(y,0)
+                    dataset = IterableDataset(x,y)
+                    data_loader = torch.utils.data.DataLoader(dataset=dataset,
+                                                            batch_size = self.config.batch
+                                                        )
+                    x = []
+                    y = []
+                    yield data_loader
+
 class makeDataset(Dataset):
     def __init__(self, accel, sound, config, device, train=True):
         self.config = config
@@ -81,13 +141,9 @@ class makeDataset(Dataset):
         self.data_length = config.len
         self.device = device
 
-        
-        if config.feature in ['wav', 'mel', 'stft']:
-            self.accel = data_spread(accel, self.data_length, config).to(device)
-            self.sound = data_spread(sound, self.data_length, config).to(device)
-        elif config.feature == 'mel':
-            self.accel = accel
-            self.sound = sound
+        self.accel = data_spread(accel, self.data_length, config).to(device)
+        self.sound = data_spread(sound, self.data_length, config).to(device)
+
         self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
         if train:
             self.shuffle()
@@ -96,7 +152,7 @@ class makeDataset(Dataset):
             self.len -= self.config.len
     
     def shuffle(self):
-        if self.config.feature in ('wav', 'mel'):
+        if self.config.feature in feature_list:
             self.perm = torch.randperm(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel) - self.config.latency - self.config.b - self.config.len)
 
 
