@@ -180,6 +180,8 @@ def main(config):
 
 def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimizer=None, device=torch.device('cpu'), train=True):
     epoch_loss = 0.
+    epoch_custom = 0.
+    epoch_l1 = 0.
     if train:
         model.train()
         optimizer.zero_grad()
@@ -208,7 +210,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 accel = torch.cat([accel.real, accel.imag], 1)
             
             sound = sound.to(device).type(torch.float32)
-            sound = sound.to(device)
             if config.subtract:
                 sound = - sound
             y = model(accel)
@@ -219,36 +220,43 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 y = torch.stack(y,0).transpose(2,1)
             y_p = conv_with_S(y, transfer_f, config)
             if config.loss == 'custom':
-                loss = criterion(sound, y_p.type(sound.dtype)) + 0.1 * l1(sound, y_p.type(sound.dtype))
+                custom_loss = criterion(sound, y_p.type(sound.dtype))
+                l1_loss = 0.1 * l1(sound, y_p.type(sound.dtype))
+                total_loss = custom_loss + l1_loss
             else:
                 loss = criterion(sound, y_p.type(sound.dtype))
             
-            if config.diff == 'diff':
-                if y_p.size(1) <= 1:
-                    raise ValueError('Cannot use difference value for loss')
-                diff = get_diff(sound)
-                diff_y_p = get_diff(y_p).type(sound.dtype)
-                diff_loss = criterion(diff, diff_y_p)
-                total_loss = config.loss_weight * loss + diff_loss
-            elif config.diff == 'double':
-                if y_p.size(1) <= 2:
-                    raise ValueError('Cannot use double difference value for loss')
-                diff = get_diff(sound)
-                diff_d = get_diff(diff)
-                diff_y_p = get_diff(y_p).type(sound.dtype)
-                diff_y_p_d = get_diff(diff_y_p)
-                diff_loss = criterion(diff, diff_y_p)
-                diff_d_loss = criterion(diff_d, diff_y_p_d)
-                total_loss = config.loss_weight * loss + diff_loss + diff_d_loss
-            else:
-                total_loss = loss
+                if config.diff == 'diff':
+                    if y_p.size(1) <= 1:
+                        raise ValueError('Cannot use difference value for loss')
+                    diff = get_diff(sound)
+                    diff_y_p = get_diff(y_p).type(sound.dtype)
+                    diff_loss = criterion(diff, diff_y_p)
+                    total_loss = config.loss_weight * loss + diff_loss
+                elif config.diff == 'double':
+                    if y_p.size(1) <= 2:
+                        raise ValueError('Cannot use double difference value for loss')
+                    diff = get_diff(sound)
+                    diff_d = get_diff(diff)
+                    diff_y_p = get_diff(y_p).type(sound.dtype)
+                    diff_y_p_d = get_diff(diff_y_p)
+                    diff_loss = criterion(diff, diff_y_p)
+                    diff_d_loss = criterion(diff_d, diff_y_p_d)
+                    total_loss = config.loss_weight * loss + diff_loss + diff_d_loss
+                else:
+                    total_loss = loss
 
             if train:
                 total_loss.backward()
                 optimizer.step()
                 optimizer.zero_grad()
             epoch_loss += total_loss.item()
-            pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{epoch_loss / (index + 1):0.4}')
+            if config.loss == 'custom':
+                epoch_custom += custom_loss.item()
+                epoch_l1 += l1_loss.item()
+                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{epoch_loss / (index + 1):0.4}', custom_loss=f'{epoch_custom / (index + 1):0.4}', l1_loss=f'{epoch_l1 / (index + 1):0.4}')        
+            else:
+                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{epoch_loss / (index + 1):0.4}')
             
         epoch_loss /= len(loader)
     return epoch_loss

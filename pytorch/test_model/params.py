@@ -29,7 +29,7 @@ def get_arg(known=[]):
     args.add_argument('--class_num', type=int, default=200)
     args.add_argument('--loss', type=str, default='custom', choices=['custom', 'l1', 'l2'])
     args.add_argument('--smoo', type=int, default=50)
-    args.add_argument('--data_per_epoch', type=int, default=5000)
+    args.add_argument('--data_per_epoch', type=int, default=4000)
     
     # resnext argument
     args.add_argument('--depth', type=int, default=29, help='Model depth.')
