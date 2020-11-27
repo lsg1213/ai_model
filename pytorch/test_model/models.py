@@ -555,7 +555,7 @@ class efficientnet(nn.Module):
         super(efficientnet, self).__init__()
         self.frontmodel = EfficientNet.from_pretrained('efficientnet-b0')
         self.config = config
-        self.output = int(np.ceil((config.len) / (config.nfft // 2 + 1)) + 1)
+        self.output = int(np.ceil(config.len / config.hop_len).item() + 1)
 
         self.conv0 = nn.Conv2d(16, 16, 3, padding=1).double()
         self.conv1 = nn.Conv2d(24, 16, 3, padding=1).double()
