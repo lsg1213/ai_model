@@ -330,33 +330,33 @@ class MBConvBlock(nn.Module):
             self._block_args.expand_ratio  # number of output channels
         if self._block_args.expand_ratio != 1:
             self._expand_conv = Conv2d(
-                in_channels=inp, out_channels=oup, kernel_size=1, bias=False)
+                in_channels=inp, out_channels=oup, kernel_size=1, bias=False).double()
             self._bn0 = nn.BatchNorm2d(
-                num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+                num_features=oup, momentum=self._bn_mom, eps=self._bn_eps).double()
         # Depthwise convolution phase
         k = self._block_args.kernel_size
         s = self._block_args.stride
         self._depthwise_conv = Conv2d(
             in_channels=oup, out_channels=oup, groups=oup,  # groups makes it depthwise
-            kernel_size=k, stride=s, bias=False)
+            kernel_size=k, stride=s, bias=False).double()
         self._bn1 = nn.BatchNorm2d(
-            num_features=oup, momentum=self._bn_mom, eps=self._bn_eps)
+            num_features=oup, momentum=self._bn_mom, eps=self._bn_eps).double()
 
         # Squeeze and Excitation layer, if desired
         if self.has_se:
             num_squeezed_channels = max(
                 1, int(self._block_args.input_filters * self._block_args.se_ratio))
             self._se_reduce = Conv2d(
-                in_channels=oup, out_channels=num_squeezed_channels, kernel_size=1)
+                in_channels=oup, out_channels=num_squeezed_channels, kernel_size=1).double()
             self._se_expand = Conv2d(
-                in_channels=num_squeezed_channels, out_channels=oup, kernel_size=1)
+                in_channels=num_squeezed_channels, out_channels=oup, kernel_size=1).double()
 
         # Output phase
         final_oup = self._block_args.output_filters
         self._project_conv = Conv2d(
-            in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False)
+            in_channels=oup, out_channels=final_oup, kernel_size=1, bias=False).double()
         self._bn2 = nn.BatchNorm2d(
-            num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps)
+            num_features=final_oup, momentum=self._bn_mom, eps=self._bn_eps).double()
         self._swish = MemoryEfficientSwish()
 
     def forward(self, inputs, drop_connect_rate=None):
@@ -425,9 +425,9 @@ class EfficientNet(nn.Module):
         # number of output channels
         out_channels = round_filters(32, self._global_params)
         self._conv_stem = Conv2d(
-            in_channels, out_channels, kernel_size=3, stride=2, bias=False)
+            in_channels, out_channels, kernel_size=3, stride=2, bias=False).double()
         self._bn0 = nn.BatchNorm2d(
-            num_features=out_channels, momentum=bn_mom, eps=bn_eps)
+            num_features=out_channels, momentum=bn_mom, eps=bn_eps).double()
 
         # Build blocks
         self._blocks = nn.ModuleList([])
@@ -557,15 +557,15 @@ class efficientnet(nn.Module):
         self.config = config
         self.output = int(np.ceil((config.len) / (config.nfft // 2 + 1)) + 1)
 
-        self.conv0 = nn.Conv2d(16, 16, 3, padding=1)
-        self.conv1 = nn.Conv2d(24, 16, 3, padding=1)
-        self.conv2 = nn.Conv2d(40, 16, 3, padding=1)
-        self.conv3 = nn.Conv2d(80, 16, 3, padding=1)
-        self.conv4 = nn.Conv2d(112, 16, 3, padding=1)
-        self.conv5 = nn.Conv2d(192, 16, 3, padding=1)
-        self.conv6 = nn.Conv2d(320, 16, 3, padding=1)
+        self.conv0 = nn.Conv2d(16, 16, 3, padding=1).double()
+        self.conv1 = nn.Conv2d(24, 16, 3, padding=1).double()
+        self.conv2 = nn.Conv2d(40, 16, 3, padding=1).double()
+        self.conv3 = nn.Conv2d(80, 16, 3, padding=1).double()
+        self.conv4 = nn.Conv2d(112, 16, 3, padding=1).double()
+        self.conv5 = nn.Conv2d(192, 16, 3, padding=1).double()
+        self.conv6 = nn.Conv2d(320, 16, 3, padding=1).double()
                     
-        self.fc = nn.Linear(7 * self.output, self.output)
+        self.fc = nn.Linear(7 * self.output, self.output).double()
 
 
     def forward(self, x):

@@ -28,34 +28,6 @@ class CustomLoss(_Loss):
     def forward(self, input, target):
         return customLoss(input, target)
 
-def stft_extractor(n_fft=128, win_length=128, hop_length=128//2):
-    def _get_stft(x):
-        """x should be (time, chan)"""
-        time, chan = x.shape
-        stft = []
-        for i in range(chan):
-            _stft = librosa.stft(x[:, i],
-                                n_fft=n_fft,
-                                win_length=win_length,
-                                hop_length=hop_length)
-            stft.append(_stft[np.newaxis])
-        stft = np.concatenate(stft, axis=0) #(chan, freq, time)
-        return stft
-    return _get_stft
-
-def istft_extractor(win_length=128, hop_length=128//2):
-    def _get_istft(x):
-        """x should be (chan, freq, time)"""
-        chan, freq, time = x.shape
-        stft = []
-        for i in range(chan):
-            _stft = librosa.istft(x[i, :, :],
-                                win_length=win_length,
-                                hop_length=hop_length)
-            stft.append(_stft[np.newaxis])
-        istft = np.concatenate(stft, axis=0) #(chan, freq, time)
-        return istft
-    return _get_istft
 
 def customLoss(y, y_pred):
     vy = y - torch.mean(y)
@@ -221,13 +193,13 @@ def ema(data, n=2):
 def wavToSTFT(config, device=torch.device('cpu')):
     def _wavToSTFT(wav):
         '''wav (channel, time)'''
-        return torch.functional.stft(wav.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 2, return_complex=True)
+        return torch.functional.stft(wav.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 4, return_complex=True)
     '''output stft (channel, nfft // 2 + 1, time, 2->real,imag)'''
     return _wavToSTFT 
 
 def STFTToWav(config, device=torch.device('cpu')):
     def _STFTToWav(stft):
         '''stft (channel, config.nfft // 2 + 1, time, 2->real,imag)'''
-        return torch.functional.istft(stft.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 2)
+        return torch.functional.istft(stft.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 4)
     '''output wav (channel, time)'''
     return _STFTToWav 

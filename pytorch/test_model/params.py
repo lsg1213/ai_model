@@ -6,7 +6,7 @@ def get_arg(known=[]):
     args.add_argument('--gpus', type=str, default='0')
     args.add_argument('--name', type=str, default='')
     args.add_argument('--epoch', type=int, default=200)
-    args.add_argument('--decay', type=float, default=1/np.sqrt(2))
+    args.add_argument('--decay', type=float, default=0.9)
     args.add_argument('--batch', type=int, default=16)
     args.add_argument('--len', type=int, default=200)
     args.add_argument('--b', type=int, default=200)
@@ -29,7 +29,8 @@ def get_arg(known=[]):
     args.add_argument('--class_num', type=int, default=200)
     args.add_argument('--loss', type=str, default='custom', choices=['custom', 'l1', 'l2'])
     args.add_argument('--smoo', type=int, default=50)
-    args.add_argument('--data_per_epoch', type=int, default=4000)
+    args.add_argument('--data_per_epoch', type=int, default=2000)
+    args.add_argument('--st2st', action='store_true')
     
     # resnext argument
     args.add_argument('--depth', type=int, default=29, help='Model depth.')

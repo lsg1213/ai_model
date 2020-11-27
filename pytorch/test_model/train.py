@@ -34,9 +34,15 @@ def main(config):
         ABSpath = '/root'
     if config.name == '':
         name = f'{config.model}'
-        name += f'_b{config.b}_d{data_length}' if config.feature == 'wav' else ''
+        name += f'_b{config.b}_d{data_length}'
         name += f'_lat{config.latency}_{config.opt}_{config.lr}_decay{config.decay:0.4}'
-        name += f'_feature{config.feature}_{config.loss}'
+        name += f'_feature{config.feature}'
+
+        if config.feature =='stft' and config.st2st:
+            name += f'_st2st'
+        name += f'_{config.loss}'
+        if config.loss == 'custom' and not (config.feature == 'stft'):        
+            config.loss_weight = 1
         if config.feature in ['mel', 'stft']:
             name += f'_nfft{config.nfft}'
         if config.ema:
@@ -92,7 +98,7 @@ def main(config):
     elif config.feature == 'mel':
         model = getattr(models, config.model)((config.nmels, 12), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     elif config.feature == 'stft':
-        model = getattr(models, config.model)((config.nmels, 12), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
+        model = getattr(models, config.model)((config.nmels, 24), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     print(config.model)
     # train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     # val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
@@ -115,7 +121,6 @@ def main(config):
         criterion = CustomLoss()
         l1 = nn.SmoothL1Loss()
         criterion = [criterion, l1]
-        config.loss_weight = 1
 
     if config.opt == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -146,11 +151,11 @@ def main(config):
     model.to(device)
     for epoch in range(startepoch, EPOCH):
         train_loader = next(train_generator.next_loader())
-        train_loss = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
+        train_loss, _, _ = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
         del train_loader
         val_loader = next(val_generator.next_loader())
         with torch.no_grad():
-            val_loss = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
+            val_loss, val_custom_loss, _ = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
 
         writer.add_scalar('train/train_loss', train_loss, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
@@ -168,9 +173,9 @@ def main(config):
         if np.isnan(train_loss) or np.isnan(val_loss):
             print('loss is divergence!')
             break
-        if min_loss > val_loss:
+        if min_loss > val_custom_loss:
             earlystep = 0
-            min_loss = val_loss
+            min_loss = val_custom_loss
         else:
             earlystep += 1
             if earlystep == 3:
@@ -199,29 +204,43 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         
     with tqdm(loader) as pbar:
         for index, (accel, sound) in enumerate(pbar):
-    # for index, (accel, sound) in enumerate(loader)
-            accel = accel.to(device).type(torch.float32)
+            accel = accel.to(device).type(torch.float64)
+            sound = sound.to(device).type(torch.float64)
+            if config.subtract:
+                sound = -sound
+
+
             if config.feature == 'mel':
-                accel = melspectrogram(accel.type(torch.float32)).transpose(1,3)
+                accel = melspectrogram(accel.type(torch.float64)).transpose(1,3)
             elif config.feature == 'stft':
                 with ThreadPoolExecutor() as pool:
                     accel = list(pool.map(stft, accel))
                 accel = torch.stack(accel)
                 accel = torch.cat([accel.real, accel.imag], 1)
+                if config.st2st:
+                    sound = sound.transpose(-1,-2)
+                    with ThreadPoolExecutor() as pool:
+                        sound = list(pool.map(stft, sound))
+                    sound = torch.stack(sound)
+                    sound = torch.cat([sound.real, sound.imag], 1)
             
-            sound = sound.to(device).type(torch.float32)
-            if config.subtract:
-                sound = - sound
             y = model(accel)
+            
             if config.feature == 'stft':
-                y = torch.stack([y[:,:y.shape[1]//2],y[:,y.shape[1]//2:]],-1)
-                with ThreadPoolExecutor() as pool:
-                    y = list(pool.map(istft, y))
-                y = torch.stack(y,0).transpose(2,1)
-            y_p = conv_with_S(y, transfer_f, config)
+                if config.st2st:
+                    y_p = y
+                else:
+                    y = torch.stack([y[:,:y.shape[1]//2],y[:,y.shape[1]//2:]],-1)
+                    with ThreadPoolExecutor() as pool:
+                        y = list(pool.map(istft, y))
+                    y = torch.stack(y,0).transpose(2,1)
+                    y_p = conv_with_S(y, transfer_f, config)
+            else:
+                y_p = conv_with_S(y, transfer_f, config)
+            pdb.set_trace()
             if config.loss == 'custom':
                 custom_loss = criterion(sound, y_p.type(sound.dtype))
-                l1_loss = 0.1 * l1(sound, y_p.type(sound.dtype))
+                l1_loss = 0. * l1(sound, y_p.type(sound.dtype))
                 total_loss = custom_loss + l1_loss
             else:
                 loss = criterion(sound, y_p.type(sound.dtype))
@@ -254,12 +273,14 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
             if config.loss == 'custom':
                 epoch_custom += custom_loss.item()
                 epoch_l1 += l1_loss.item()
-                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{epoch_loss / (index + 1):0.4}', custom_loss=f'{epoch_custom / (index + 1):0.4}', l1_loss=f'{epoch_l1 / (index + 1):0.4}')        
+                pbar.set_postfix(epoch=f'{epoch}', total_loss=f'{epoch_loss / (index + 1):0.4}', custom_loss=f'{epoch_custom / (index + 1):0.4}', l1_loss=f'{epoch_l1 / (index + 1):0.4}')        
             else:
-                pbar.set_postfix(epoch=f'{epoch}', train_loss=f'{epoch_loss / (index + 1):0.4}')
+                pbar.set_postfix(epoch=f'{epoch}', total_loss=f'{epoch_loss / (index + 1):0.4}')
             
         epoch_loss /= len(loader)
-    return epoch_loss
+        epoch_custom /= len(loader)
+        epoch_l1 /= len(loader)
+    return epoch_loss, epoch_custom, epoch_l1
 
 if __name__ == "__main__":
     import sys
