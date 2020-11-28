@@ -193,13 +193,56 @@ def ema(data, n=2):
 def wavToSTFT(config, device=torch.device('cpu')):
     def _wavToSTFT(wav):
         '''wav (channel, time)'''
-        return torch.functional.stft(wav.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 4, return_complex=True)
+        return torch.functional.stft(wav.to(device), n_fft=config.nfft, win_length=config.win_len, hop_length=config.hop_len, return_complex=True)
     '''output stft (channel, nfft // 2 + 1, time, 2->real,imag)'''
     return _wavToSTFT 
 
 def STFTToWav(config, device=torch.device('cpu')):
     def _STFTToWav(stft):
         '''stft (channel, config.nfft // 2 + 1, time, 2->real,imag)'''
-        return torch.functional.istft(stft.to(device), n_fft=config.nfft, win_length=config.nfft, hop_length=config.nfft // 4)
+        return torch.functional.istft(stft.to(device), n_fft=config.nfft, win_length=config.win_len, hop_length=config.hop_len,)
     '''output wav (channel, time)'''
-    return _STFTToWav 
+    return _STFTToWav
+
+def filterWithSTFT(config, device=torch.device('cpu')):
+    stft = wavToSTFT(config, device)
+    istft = STFTToWav(config, device)
+    low, high = config.range.split('~')
+    nbins = config.nfft // 2 + 1
+    low = int(int(low) / (config.sr / nbins))
+    high = int(int(high) / (config.sr / nbins))
+    def _filter(inputs): 
+        '''wav (batch, channel, nbins, time)'''
+        if inputs.shape[-2] == nbins:
+            # stft
+            st = inputs
+        else:
+            # wav
+            if len(inputs.shape) == 2:
+                st = stft(inputs)
+            elif len(inputs.shape) == 3:
+                st = torch.stack(list(map(stft, inputs)))
+        if len(st.shape) == 3:
+            st[:,:max(low - 1,0),:] *= 0
+            st[:,min(high + 1, st.shape[1]):,:] *= 0
+            return istft(st)
+        elif len(st.shape) == 4:
+            st[:,:,:max(low - 1,0),:] *= 0
+            st[:,:,min(high + 1, st.shape[1]):,:] *= 0
+            return torch.stack(list(map(istft, st)))
+    return _filter
+
+if __name__ == "__main__":
+    from params import get_arg
+    import sys, pdb, torchaudio
+    config = get_arg(sys.argv[1:])
+    config.nfft = 1024
+    config.len = 2048
+    filt = filterWithSTFT(config, device)
+    spt = torchaudio.transforms.Spectrogram(n_fft=config.nfft, win_length=config.win_len, hop_length=config.hop_len)
+    config.hop_len = config.nfft // 4
+    stft = wavToSTFT(config)
+    wave = torch.rand(8,10000)
+    st = stft(wave)
+
+    pdb.set_trace()

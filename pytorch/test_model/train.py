@@ -237,7 +237,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                     y_p = conv_with_S(y, transfer_f, config)
             else:
                 y_p = conv_with_S(y, transfer_f, config)
-            pdb.set_trace()
+                
             if config.loss == 'custom':
                 custom_loss = criterion(sound, y_p.type(sound.dtype))
                 l1_loss = 0. * l1(sound, y_p.type(sound.dtype))
