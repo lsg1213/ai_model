@@ -7,6 +7,7 @@ import torch.nn.functional as F
 from tensorboardX import SummaryWriter
 import models
 from utils import *
+from train_utils import *
 from torchsummary import summary
 from glob import glob
 from pytorch_model_summary import summary
@@ -64,7 +65,7 @@ def main(config):
         name = config.name
     name += '_0.1'
     if config.feature == 'wav':
-        config.data_per_epoch = 1500 * config.batch
+        config.data_per_epoch = 1200 * config.batch
         
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
         raise FileNotFoundError('path is wrong')
@@ -210,7 +211,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
             accel = accel.to(device).type(torch.float64)
             sound = sound.to(device).type(torch.float64)
             if config.filter:
-                pdb.set_trace()
                 accel = filt(accel)
                 sound = filt(sound.transpose(-1,-2)).transpose(-1,-2)
             if config.subtract:
