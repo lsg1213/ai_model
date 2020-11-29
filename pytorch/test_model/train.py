@@ -61,6 +61,10 @@ def main(config):
         
     else:
         name = config.name
+    name += '_0.1'
+    if config.feature == 'wav':
+        config.data_per_epoch = 2000 * config.batch
+        
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
         raise FileNotFoundError('path is wrong')
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
@@ -90,11 +94,9 @@ def main(config):
 
         if accel_raw_data.shape[0] != sound_raw_data.shape[0]:
             raise ValueError(f'length of accel and sound data is not matched, {accel_raw_data.shape}, {sound_raw_data.shape}')
-    
 
-    
     if config.feature == 'wav':
-        model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
+        model = getattr(models, config.model)((config.len + config.b,), (8,), 12, config.len, config).to(device)
     elif config.feature == 'mel':
         model = getattr(models, config.model)((config.nmels, 12), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     elif config.feature == 'stft':
@@ -144,8 +146,6 @@ def main(config):
             earlystep = resume['earlystep']
         else:
             print('resume fail')
-
-
         
     transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
@@ -178,7 +178,7 @@ def main(config):
             min_loss = val_custom_loss
         else:
             earlystep += 1
-            if earlystep == 3:
+            if earlystep == 5:
                 print('Early stop!')
                 break
     print(name)
@@ -208,7 +208,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
             sound = sound.to(device).type(torch.float64)
             if config.subtract:
                 sound = -sound
-
 
             if config.feature == 'mel':
                 accel = melspectrogram(accel.type(torch.float64)).transpose(1,3)
@@ -240,7 +239,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 
             if config.loss == 'custom':
                 custom_loss = criterion(sound, y_p.type(sound.dtype))
-                l1_loss = 0. * l1(sound, y_p.type(sound.dtype))
+                l1_loss = 0.1 * l1(sound, y_p.type(sound.dtype))
                 total_loss = custom_loss + l1_loss
             else:
                 loss = criterion(sound, y_p.type(sound.dtype))
