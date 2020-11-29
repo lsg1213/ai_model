@@ -150,10 +150,10 @@ def main(config):
     transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
     for epoch in range(startepoch, EPOCH):
-        train_loader = next(train_generator.next_loader())
+        train_loader = next(train_generator.next_loader(True))
         train_loss, _, _ = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
         del train_loader
-        val_loader = next(val_generator.next_loader())
+        val_loader = next(val_generator.next_loader(False))
         with torch.no_grad():
             val_loss, val_custom_loss, _ = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
 

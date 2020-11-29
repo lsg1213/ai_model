@@ -42,8 +42,8 @@ def data_spread(data, data_length, config):
     and cut wave frames by data_length
     '''
     if type(data) == list:
-        res = torch.cat([torch.tensor(i) for i in data])
-    return res
+        data = torch.cat([torch.tensor(i) for i in data])
+    return data
 
 def get_diff(data):
     return data[:,1:] - data[:,:-1]
@@ -85,11 +85,12 @@ class makeGenerator():
             self.len -= self.config.len
         self.idx = torch.arange(0,self.len,dtype=torch.int32)
     
-    def next_loader(self):
+    def next_loader(self,train=True):
         x = []
         y = []
         while True:
-            random.shuffle(self.idx)
+            if train:
+                self.idx = torch.randperm(len(self.idx))
             for idx in self.idx:
                 index = idx + self.config.latency
                 frame_size = self.config.b
