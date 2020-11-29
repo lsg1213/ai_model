@@ -82,7 +82,7 @@ def main(config):
     #     data_path = os.path.join(ABSpath, 'datasets/hyundai')
     data_path = '.'
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
-    transfer_f = torch.from_numpy(transfer_f).to(device)
+    transfer_f = torch.from_numpy(transfer_f[::-1,:,:].copy()).to(device)
     transfer_f.requires_grad = False
     if config.feature in ['wav', 'mel', 'stft']:
         accel_raw_data = joblib.load(open(os.path.join(data_path,'stationary_accel_train.joblib'),'rb'))
@@ -149,7 +149,7 @@ def main(config):
         else:
             print('resume fail')
         
-    transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
+    # transfer_f = torch.tensor(transfer_f.cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
     for epoch in range(startepoch, EPOCH):
         train_loader = next(train_generator.next_loader(True))

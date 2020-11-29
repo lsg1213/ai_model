@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-import torch.functional as F
+import torch.nn.functional as F
 
 def data_spread(data, config):
     '''
@@ -38,7 +38,7 @@ def customLoss(y, y_pred):
     return - cost
 
 def padding(signal, Ls):
-    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
+    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
 
 def meltowav(mel, config):
@@ -53,17 +53,14 @@ def meltowav(mel, config):
     return wav
 
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
-    # S_data(Ls, K, M)
+    # S_data(Ls, K, M), signal(batch, frame, K)
     if config.ema:
         signal = ema(signal, n=2)
-    
-    Ls = S_data.size(1)
-    K = S_data.size(-1)
+    Ls = S_data.size(0)
+    K = S_data.size(1)
     signal = padding(signal, Ls)
-    if signal.size(1) != K:
-        signal = signal.transpose(1,2)
-    
-    out = F.conv1d(signal, S_data.permute([2,0,1]).type(signal.dtype)).transpose(1,2)[:,:-1,:]
+    # conv1d (batch, inputchannel, W), (outputchannel, inputchannel, W)
+    out = F.conv1d(signal.transpose(1,2), S_data.permute([2,1,0]).type(signal.dtype))
     
     return out 
 
