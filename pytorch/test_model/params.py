@@ -31,6 +31,7 @@ def get_arg(known=[]):
     args.add_argument('--smoo', type=int, default=50)
     args.add_argument('--data_per_epoch', type=int, default=2000)
     args.add_argument('--st2st', action='store_true')
+    args.add_argument('--filter', action='store_true')
     args.add_argument('--range', type=str, default='90~100')
     args.add_argument('--win_len', type=int, default=0)
     args.add_argument('--hop_len', type=int, default=0)
@@ -47,6 +48,8 @@ def get_arg(known=[]):
     arg = args.parse_known_args(known)[0]
     if arg.split_number == -1:
         arg.split_number = arg.len // 2
+    if arg.filter and arg.nfft > arg.len:
+        arg.nfft = arg.len
     if arg.win_len == 0:
         arg.win_len = arg.nfft
     if arg.hop_len == 0:

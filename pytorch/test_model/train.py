@@ -58,12 +58,13 @@ def main(config):
             name += f'_weight{config.loss_weight}'
         if config.subtract:
             name += f'_subtract'
-        
+        if config.filter:
+            name += f'_{config.range}'
     else:
         name = config.name
     name += '_0.1'
     if config.feature == 'wav':
-        config.data_per_epoch = 2000 * config.batch
+        config.data_per_epoch = 1500 * config.batch
         
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
         raise FileNotFoundError('path is wrong')
@@ -197,6 +198,8 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
     elif config.feature == 'stft':
         stft = wavToSTFT(config, device)
         istft = STFTToWav(config, device)
+    elif config.feature == 'wav' and config.filter:
+        filt = filterWithSTFT(config, device)
     
     if config.loss == 'custom':
         l1 = criterion[1]
@@ -206,6 +209,10 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         for index, (accel, sound) in enumerate(pbar):
             accel = accel.to(device).type(torch.float64)
             sound = sound.to(device).type(torch.float64)
+            if config.filter:
+                pdb.set_trace()
+                accel = filt(accel)
+                sound = filt(sound.transpose(-1,-2)).transpose(-1,-2)
             if config.subtract:
                 sound = -sound
 
