@@ -29,7 +29,7 @@ def get_arg(known=[]):
     args.add_argument('--class_num', type=int, default=200)
     args.add_argument('--loss', type=str, default='custom', choices=['custom', 'l1', 'l2'])
     args.add_argument('--smoo', type=int, default=50)
-    args.add_argument('--data_per_epoch', type=int, default=2000)
+    args.add_argument('--data_per_epoch', type=int, default=4000)
     args.add_argument('--st2st', action='store_true')
     args.add_argument('--filter', action='store_true')
     args.add_argument('--range', type=str, default='90~100')

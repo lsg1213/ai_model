@@ -63,7 +63,6 @@ def main(config):
             name += f'_{config.range}'
     else:
         name = config.name
-    name += '_0.1'
     if config.feature == 'wav':
         config.data_per_epoch = 1200 * config.batch
         
@@ -132,7 +131,7 @@ def main(config):
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
-    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay, verbose=True)
     # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
     startepoch = 0
     min_loss = 10000000000.0
@@ -153,14 +152,18 @@ def main(config):
     model.to(device)
     for epoch in range(startepoch, EPOCH):
         train_loader = next(train_generator.next_loader(True))
-        train_loss, _, _ = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
+        train_loss, train_custom, train_l1 = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
         del train_loader
         val_loader = next(val_generator.next_loader(False))
         with torch.no_grad():
-            val_loss, val_custom_loss, _ = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
+            val_loss, val_custom, val_l1 = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
 
         writer.add_scalar('train/train_loss', train_loss, epoch)
+        writer.add_scalar('train/train_custom', train_custom, epoch)
+        writer.add_scalar('train/train_l1', train_l1, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
+        writer.add_scalar('val/val_custom', val_custom, epoch)
+        writer.add_scalar('val/val_l1', val_l1, epoch)
         # lr_schedule.step(val_loss)
         lr_schedule.step()
         torch.save({
@@ -170,14 +173,14 @@ def main(config):
             'earlystep': earlystep,
             'min_loss': min_loss,
             'lr_schedule': lr_schedule.state_dict()
-        }, os.path.join(modelsave_path,f'{epoch}_{val_loss:0.4}' + '.pt'))
+        }, os.path.join(modelsave_path,f'{epoch}_{val_custom:0.4}_{val_loss:0.4}' + '.pt'))
 
         if np.isnan(train_loss) or np.isnan(val_loss):
             print('loss is divergence!')
             break
-        if min_loss > val_custom_loss:
+        if min_loss > val_custom:
             earlystep = 0
-            min_loss = val_custom_loss
+            min_loss = val_custom
         else:
             earlystep += 1
             if earlystep == 5:

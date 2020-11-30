@@ -62,7 +62,7 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # conv1d (batch, inputchannel, W), (outputchannel, inputchannel, W)
     out = F.conv1d(signal.transpose(1,2), S_data.permute([2,1,0]).type(signal.dtype))
     
-    return out 
+    return out.transpose(1,2)
 
 def ema(data, n=2):
     '''
