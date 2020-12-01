@@ -44,7 +44,7 @@ def main(config):
         name += f'_{config.loss}'
         if config.loss == 'custom' and not (config.feature == 'stft'):        
             config.loss_weight = 1
-        if config.feature in ['mel', 'stft']:
+        if config.feature in ['mel', 'stft'] or (config.filter and config.feature == 'wav'):
             name += f'_nfft{config.nfft}'
         if config.ema:
             name += '_ema'
@@ -65,7 +65,10 @@ def main(config):
         name = config.name
     if config.feature == 'wav':
         config.data_per_epoch = 1200 * config.batch
-        
+    else:
+        if config.loss == 'custom':
+            raise ValueError(f'custom loss is only good for wave form, {config.feature} now')
+    name += '_0.1'
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
         raise FileNotFoundError('path is wrong')
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
@@ -150,13 +153,30 @@ def main(config):
         
     # transfer_f = torch.tensor(transfer_f.cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
+    traintime = 2
     for epoch in range(startepoch, EPOCH):
-        train_loader = next(train_generator.next_loader(True))
-        train_loss, train_custom, train_l1 = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
-        del train_loader
-        val_loader = next(val_generator.next_loader(False))
-        with torch.no_grad():
-            val_loss, val_custom, val_l1 = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
+        train_loss, train_custom, train_l1 = 0.,0.,0.
+        val_loss, val_custom, val_l1 = 0.,0.,0.
+        for _ in range(traintime):
+            train_loader = next(train_generator.next_loader(True))
+            _train_loss, _train_custom, _train_l1 = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
+            del train_loader
+            val_loader = next(val_generator.next_loader(False))
+            with torch.no_grad():
+                _val_loss, _val_custom, _val_l1 = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
+            train_loss += _train_loss
+            train_custom += _train_custom
+            train_l1 += _train_l1
+            val_loss += _val_loss
+            val_custom += _val_custom
+            val_l1 += _val_l1
+            
+        train_loss /= traintime
+        train_custom /= traintime
+        train_l1 /= traintime
+        val_loss /= traintime
+        val_custom /= traintime
+        val_l1 /= traintime
 
         writer.add_scalar('train/train_loss', train_loss, epoch)
         writer.add_scalar('train/train_custom', train_custom, epoch)
@@ -208,6 +228,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
     if config.loss == 'custom':
         l1 = criterion[1]
         criterion = criterion[0]
+    
         
     with tqdm(loader) as pbar:
         for index, (accel, sound) in enumerate(pbar):
