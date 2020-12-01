@@ -68,7 +68,9 @@ def main(config):
     else:
         if config.loss == 'custom':
             raise ValueError(f'custom loss is only good for wave form, {config.feature} now')
-    name += '_0.1'
+    if config.loss == 'custom':
+        name += '_0.1'
+
     if not os.path.exists(os.path.join(ABSpath, 'ai_model')):
         raise FileNotFoundError('path is wrong')
     tensorboard_path = os.path.join(ABSpath, 'ai_model/pytorch/test_model/tensorboard_log/' + name)
@@ -161,29 +163,25 @@ def main(config):
             train_loader = next(train_generator.next_loader(True))
             _train_loss, _train_custom, _train_l1 = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
             del train_loader
-            val_loader = next(val_generator.next_loader(False))
-            with torch.no_grad():
-                _val_loss, _val_custom, _val_l1 = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
             train_loss += _train_loss
             train_custom += _train_custom
             train_l1 += _train_l1
-            val_loss += _val_loss
-            val_custom += _val_custom
-            val_l1 += _val_l1
+        val_loader = next(val_generator.next_loader(False))
+        with torch.no_grad():
+            val_loss, val_custom, val_l1 = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
+        
             
         train_loss /= traintime
         train_custom /= traintime
         train_l1 /= traintime
-        val_loss /= traintime
-        val_custom /= traintime
-        val_l1 /= traintime
 
         writer.add_scalar('train/train_loss', train_loss, epoch)
-        writer.add_scalar('train/train_custom', train_custom, epoch)
         writer.add_scalar('train/train_l1', train_l1, epoch)
         writer.add_scalar('val/val_loss', val_loss, epoch)
-        writer.add_scalar('val/val_custom', val_custom, epoch)
         writer.add_scalar('val/val_l1', val_l1, epoch)
+        if config.loss == 'custom':
+            writer.add_scalar('val/val_custom', val_custom, epoch)
+            writer.add_scalar('train/train_custom', train_custom, epoch)
         # lr_schedule.step(val_loss)
         lr_schedule.step()
         torch.save({

@@ -6,7 +6,7 @@ def get_arg(known=[]):
     args.add_argument('--gpus', type=str, default='0')
     args.add_argument('--name', type=str, default='')
     args.add_argument('--epoch', type=int, default=200)
-    args.add_argument('--decay', type=float, default=0.95)
+    args.add_argument('--decay', type=float, default=1/np.sqrt(2))
     args.add_argument('--batch', type=int, default=128)
     args.add_argument('--len', type=int, default=200)
     args.add_argument('--b', type=int, default=200)
