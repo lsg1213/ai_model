@@ -14,7 +14,6 @@ def get_arg(known=[]):
     args.add_argument('--model', type=str, default='CombineAutoencoder', choices=['CombineAutoencoder', 'ResNext', 'efficientnet'])
     args.add_argument('--resume', action='store_true')
     args.add_argument('--ema', action='store_true')
-    args.add_argument('--weight', action='store_true')
     args.add_argument('--relu', action='store_true')
     args.add_argument('--future', type=bool, default=True)
     args.add_argument('--diff', type=str, default='diff', choices=['nodiff', 'diff', 'double'])
@@ -35,7 +34,7 @@ def get_arg(known=[]):
     args.add_argument('--range', type=str, default='90~100')
     args.add_argument('--win_len', type=int, default=0)
     args.add_argument('--hop_len', type=int, default=0)
-    
+    args.add_argument('--highpass', type=int, default=20)
     # resnext argument
     args.add_argument('--depth', type=int, default=29, help='Model depth.')
     args.add_argument('--nlabels', type=int, default=400, help='')

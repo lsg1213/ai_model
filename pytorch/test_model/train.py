@@ -48,8 +48,6 @@ def main(config):
             name += f'_nfft{config.nfft}'
         if config.ema:
             name += '_ema'
-        if config.weight:
-            name += '_weight'
         if config.relu:
             name += '_relu'
         if config.future:
@@ -155,7 +153,7 @@ def main(config):
         
     # transfer_f = torch.tensor(transfer_f.cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
-    traintime = 2
+    traintime = 5
     for epoch in range(startepoch, EPOCH):
         train_loss, train_custom, train_l1 = 0.,0.,0.
         val_loss, val_custom, val_l1 = 0.,0.,0.
@@ -304,10 +302,10 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 pbar.set_postfix(epoch=f'{epoch}', total_loss=f'{epoch_loss / (index + 1):0.4}', custom_loss=f'{epoch_custom / (index + 1):0.4}', l1_loss=f'{epoch_l1 / (index + 1):0.4}')        
             else:
                 pbar.set_postfix(epoch=f'{epoch}', total_loss=f'{epoch_loss / (index + 1):0.4}')
-            
         epoch_loss /= len(loader)
         epoch_custom /= len(loader)
         epoch_l1 /= len(loader)
+        
     return epoch_loss, epoch_custom, epoch_l1
 
 if __name__ == "__main__":
