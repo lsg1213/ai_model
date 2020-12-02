@@ -151,12 +151,12 @@ def main(config):
         else:
             print('resume fail')
         
-    # transfer_f = torch.tensor(transfer_f.cpu().numpy()[:,::-1,:].copy(),device=device)
     model.to(device)
     traintime = 5
     for epoch in range(startepoch, EPOCH):
         train_loss, train_custom, train_l1 = 0.,0.,0.
         val_loss, val_custom, val_l1 = 0.,0.,0.
+        model.train()
         for _ in range(traintime):
             train_loader = next(train_generator.next_loader(True))
             _train_loss, _train_custom, _train_l1 = trainloop(model, train_loader, criterion, transfer_f, epoch, config=config, optimizer=optimizer, device=device, train=True)
@@ -165,6 +165,7 @@ def main(config):
             train_custom += _train_custom
             train_l1 += _train_l1
         val_loader = next(val_generator.next_loader(False))
+        model.eval()
         with torch.no_grad():
             val_loss, val_custom, val_l1 = trainloop(model, val_loader, criterion, transfer_f, epoch, config=config, optimizer=None, device=device, train=False)
         
@@ -208,11 +209,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
     epoch_loss = 0.
     epoch_custom = 0.
     epoch_l1 = 0.
-    if train:
-        model.train()
-        optimizer.zero_grad()
-    else:
-        model.eval()
+
     if config.feature == 'mel':
         melspectrogram = torchaudio.transforms.MelSpectrogram(8192, n_fft=config.nfft, n_mels=config.nmels).to(device)
     elif config.feature == 'stft':
@@ -228,13 +225,15 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         
     with tqdm(loader) as pbar:
         for index, (accel, sound) in enumerate(pbar):
+            if train:
+                optimizer.zero_grad()
             accel = accel.to(device).type(torch.float64)
             sound = sound.to(device).type(torch.float64)
+            if config.subtract:
+                sound = -sound
             if config.filter:
                 accel = filt(accel)
                 sound = filt(sound.transpose(-1,-2)).transpose(-1,-2)
-            if config.subtract:
-                sound = -sound
 
             if config.feature == 'mel':
                 accel = melspectrogram(accel.type(torch.float64)).transpose(1,3)
@@ -294,7 +293,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
             if train:
                 total_loss.backward()
                 optimizer.step()
-                optimizer.zero_grad()
             epoch_loss += total_loss.item()
             if config.loss == 'custom':
                 epoch_custom += custom_loss.item()
