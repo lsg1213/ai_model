@@ -152,7 +152,7 @@ def main(config):
             print('resume fail')
         
     model.to(device)
-    traintime = 5
+    traintime = 10
     for epoch in range(startepoch, EPOCH):
         train_loss, train_custom, train_l1 = 0.,0.,0.
         val_loss, val_custom, val_l1 = 0.,0.,0.
