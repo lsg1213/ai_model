@@ -195,6 +195,8 @@ def main(config):
         if np.isnan(train_loss) or np.isnan(val_loss):
             print('loss is divergence!')
             break
+        if config.loss != 'custom':
+            val_custom = val_loss
         if min_loss > val_custom:
             earlystep = 0
             min_loss = val_custom
