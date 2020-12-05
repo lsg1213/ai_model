@@ -186,11 +186,6 @@ class CombineAutoencoder(nn.Module):
             # mel: inputs=(frames, 12), outputs=(out_frames), inch=(self.conv2 filter number), outch=(8)
             self.back = FCAutoencoder(_inputs, config.len, self.conv2.out_channels, 8, config)
 
-        if config.weight:
-            with torch.no_grad():
-                self.conv1.weight = torch.nn.Parameter(torch.zeros_like(self.conv1.weight) + 1e-5)
-                self.conv2.weight = torch.nn.Parameter(torch.zeros_like(self.conv2.weight) + 1e-5)
-
     
     def forward(self, x):
         x = self.conv1(x.type(torch.float32))
@@ -253,12 +248,6 @@ class FCAutoencoder(nn.Module):
         elif config.feature == 'mel':
             self.linear8 = nn.Linear(256, outputs * outch)
             # self.linear8 = nn.Linear(256, self.config.nmels * 8 * (self.config.len // (self.config.nfft // 2) + 1))
-
-        if config.weight:
-            layers = dict(self._modules)
-            for layer in layers.keys():
-                la = getattr(self, layer).weight
-                la = torch.nn.Parameter(torch.zeros_like(la) + 1e-5)
 
     def forward(self, x):
         x = torch.reshape(x, (x.size(0), -1))
