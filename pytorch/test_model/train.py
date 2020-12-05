@@ -29,7 +29,7 @@ def main(config):
     K, m = 8, 8
     ls = 128
 
-    ABSpath = '/home/skuser'
+    ABSpath = '/home/skuser/te'
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
@@ -70,7 +70,8 @@ def main(config):
     #     data_path = os.path.join(ABSpath, 'datasets/hyundai')
     data_path = '.'
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
-    transfer_f = torch.from_numpy(transfer_f).to(device)
+
+    transfer_f = torch.tensor(transfer_f[::-1,:,:].copy(),device=device)
     transfer_f.requires_grad = False
     if config.feature in ['wav', 'mel']:
         accel_raw_data = joblib.load(open(os.path.join(data_path,'stationary_accel_train.joblib'),'rb'))
@@ -96,10 +97,23 @@ def main(config):
 
     # mel: inputs=(n_mels, 12), outputs=(window_size, 8), inch=(3), outch=(frames)
     if config.feature == 'wav':
-        model = getattr(models, config.model)(dataset[0][0].shape[1:], dataset[0][1].shape[1:], dataset[0][0].shape[0], dataset[0][1].shape[0], config).to(device)
+        model = getattr(models, config.model)((config.len + config.b,), (8,), 12, config.len, config).to(device)
     elif config.feature == 'mel':
         model = getattr(models, config.model)((config.nmels, 12), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     print(config.model)
+    # loader = torch.utils.data.DataLoader(train_dataset, shufflt=False, batch_size=BATCH_SIZE, drop_last=False)
+    # resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[0]))[-1])
+    # optimizer.load_state_dict(resume['optimizer'])
+    # model.load_state_dict(resume['model'])
+    # model.eval()
+    # with torch.no_grad():
+    #     for x, sound in loader:
+    #         x = x.type(torch.float32).to(device)
+    #         sound = sound.type(torch.float32).to(device)
+    #         y = model(x)
+    #         y_p = conv_with_S(y, transfer_f, config)
+
+    # exit()
     train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
     
@@ -137,7 +151,7 @@ def main(config):
 
 
         
-    transfer_f = torch.tensor(transfer_f.transpose(0,1).cpu().numpy()[:,::-1,:].copy(),device=device)
+    
     model.to(device)
     for epoch in range(startepoch, EPOCH):
         train_loss = 0.

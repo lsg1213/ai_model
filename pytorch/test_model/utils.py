@@ -39,7 +39,13 @@ def data_spread(data, data_length, config):
 
 def get_diff(data):
     return data[:,1:] - data[:,:-1]
-    
+
+class makeDataLoader(torch.utils.data.DataLoader):
+    def __init__(self, dataset, config, device, shuffle):
+        super(makeDataLoader, self).__init__()
+        # torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
+
+
 class makeDataset(Dataset):
     def __init__(self, accel, sound, config, device, train=True):
         self.config = config
@@ -47,9 +53,6 @@ class makeDataset(Dataset):
         self.data_length = config.len
         self.device = device
 
-        if self.takebeforetime % self.data_length != 0:
-            raise ValueError(f'takebeforetime must be the multiple of data_length, {takebeforetime}')
-        
         if config.feature in ['wav', 'mel']:
             self.accel = data_spread(accel, self.data_length, config).to(device)
             self.sound = data_spread(sound, self.data_length, config).to(device)
@@ -82,9 +85,7 @@ class makeDataset(Dataset):
             sound = self.sound[index + frame_size:index + frame_size + self.config.len]
         return accel, sound
 
-def padding(signal, Ls):
-    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
-    return torch.cat([_pad, signal],1)
+
 
 def meltowav(mel, config):
     # mel shape = (batch, frames, n_mels, channel=8)
@@ -97,20 +98,21 @@ def meltowav(mel, config):
     wav = torchaudio.transforms.GriffinLim(config.nfft).to(mel.device)(mid)
     return wav
 
+def padding(signal, Ls):
+    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
+    return torch.cat([_pad, signal],1)
+    
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
-    # S_data(Ls, K, M)
+    # S_data(Ls, K, M), signal(batch, frame, K)
     if config.ema:
         signal = ema(signal, n=2)
-    
-    Ls = S_data.size(1)
-    K = S_data.size(-1)
+    Ls = S_data.size(0)
+    K = S_data.size(1)
     signal = padding(signal, Ls)
-    if signal.size(1) != K:
-        signal = signal.transpose(1,2)
+    # conv1d (batch, inputchannel, W), (outputchannel, inputchannel, W)
+    out = F.conv1d(signal.transpose(1,2), S_data.permute([2,1,0]).type(signal.dtype))
     
-    out = F.conv1d(signal, S_data.permute([2,0,1]).type(signal.dtype)).transpose(1,2)[:,:-1,:]
-    
-    return out 
+    return out.transpose(1,2)
 
 def ema(data, n=2):
     '''
