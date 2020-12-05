@@ -30,7 +30,7 @@ def main(config):
     K, m = 8, 8
     ls = 128
 
-    ABSpath = '/home/skuser'
+    ABSpath = '/home/skuser/te'
     if not os.path.exists(ABSpath):
         ABSpath = '/root'
     if config.name == '':
@@ -84,7 +84,12 @@ def main(config):
     #     data_path = os.path.join(ABSpath, 'datasets/hyundai')
     data_path = '.'
     transfer_f = np.array(pickle.load(open(os.path.join(data_path,'transfer_f.pickle'),'rb')))
+<<<<<<< HEAD
     transfer_f = torch.from_numpy(transfer_f[::-1,:,:].copy()).to(device)
+=======
+
+    transfer_f = torch.tensor(transfer_f[::-1,:,:].copy(),device=device)
+>>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
     transfer_f.requires_grad = False
     if config.feature in ['wav', 'mel', 'stft']:
         accel_raw_data = joblib.load(open(os.path.join(data_path,'stationary_accel_train.joblib'),'rb'))
@@ -106,8 +111,26 @@ def main(config):
     elif config.feature == 'stft':
         model = getattr(models, config.model)((config.nmels, 24), (config.len,), (config.len + config.b) // (config.nfft // 2) + 1, 8, config).to(device)
     print(config.model)
+<<<<<<< HEAD
     # train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
     # val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
+=======
+    # loader = torch.utils.data.DataLoader(train_dataset, shufflt=False, batch_size=BATCH_SIZE, drop_last=False)
+    # resume = torch.load(sorted(glob(modelsave_path+'/*.pt'), key=lambda x: float(x.split('/')[-1].split('_')[0]))[-1])
+    # optimizer.load_state_dict(resume['optimizer'])
+    # model.load_state_dict(resume['model'])
+    # model.eval()
+    # with torch.no_grad():
+    #     for x, sound in loader:
+    #         x = x.type(torch.float32).to(device)
+    #         sound = sound.type(torch.float32).to(device)
+    #         y = model(x)
+    #         y_p = conv_with_S(y, transfer_f, config)
+
+    # exit()
+    train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
+>>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
     
     # dataset = makeDataset(accel_raw_data, sound_raw_data, config, device)
     # train_dataset, val_dataset = torch.utils.data.random_split(dataset, [int(0.9 * len(dataset)), len(dataset) - int(0.9 * len(dataset))])
@@ -151,6 +174,10 @@ def main(config):
         else:
             print('resume fail')
         
+<<<<<<< HEAD
+=======
+    
+>>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
     model.to(device)
     traintime = 10
     for epoch in range(startepoch, EPOCH):
