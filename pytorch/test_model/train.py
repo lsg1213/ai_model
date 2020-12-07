@@ -39,8 +39,6 @@ def main(config):
         name += f'_feature{config.feature}_{config.loss}'
         if config.feature == 'mel':
             name += f'_nfft{config.nfft}'
-        if config.ema:
-            name += '_ema'
         if config.relu:
             name += '_relu'
         if config.future:
@@ -112,7 +110,7 @@ def main(config):
     #         y_p = conv_with_S(y, transfer_f, config)
 
     # exit()
-    train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
+    
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=BATCH_SIZE, drop_last=False)
     
 
@@ -154,6 +152,7 @@ def main(config):
     
     model.to(device)
     for epoch in range(startepoch, EPOCH):
+        train_loader = torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
         train_loss, train_custom, train_l1 = 0.,0.,0.
         val_loss, val_custom, val_l1 = 0.,0.,0.
         model.train()
@@ -218,8 +217,10 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
     if config.loss == 'custom':
         l1 = criterion[1]
         criterion = criterion[0]
-    
-        
+    if train:
+        data_num = len(loader) // 10
+    else:
+        data_num = len(loader)
     with tqdm(loader) as pbar:
         for index, (accel, sound) in enumerate(pbar):
             if train:
@@ -297,9 +298,11 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 pbar.set_postfix(epoch=f'{epoch}', total_loss=f'{epoch_loss / (index + 1):0.4}', custom_loss=f'{epoch_custom / (index + 1):0.4}', l1_loss=f'{epoch_l1 / (index + 1):0.4}')        
             else:
                 pbar.set_postfix(epoch=f'{epoch}', total_loss=f'{epoch_loss / (index + 1):0.4}')
-        epoch_loss /= len(loader)
-        epoch_custom /= len(loader)
-        epoch_l1 /= len(loader)
+            if index == data_num - 1:
+                break
+        epoch_loss /= data_num
+        epoch_custom /= data_num
+        epoch_l1 /= data_num
         
     return epoch_loss, epoch_custom, epoch_l1
             

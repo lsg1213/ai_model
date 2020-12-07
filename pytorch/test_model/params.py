@@ -13,7 +13,6 @@ def get_arg(known=[]):
     args.add_argument('--opt', type=str, default='adam')
     args.add_argument('--model', type=str, default='CombineAutoencoder', choices=['CombineAutoencoder', 'ResNext', 'efficientnet'])
     args.add_argument('--resume', action='store_true')
-    args.add_argument('--ema', action='store_true')
     args.add_argument('--relu', action='store_true')
     args.add_argument('--future', type=bool, default=True)
     args.add_argument('--diff', type=str, default='diff', choices=['nodiff', 'diff', 'double'])

@@ -104,8 +104,6 @@ def padding(signal, Ls):
     
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M), signal(batch, frame, K)
-    if config.ema:
-        signal = ema(signal, n=2)
     Ls = S_data.size(0)
     K = S_data.size(1)
     signal = padding(signal, Ls)
@@ -114,17 +112,19 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     
     return out.transpose(1,2)
 
-def ema(data, n=2):
-    '''
-    exponential mov
-    '''
-    smoothing_factor = 2. / (n + 1)
-    #get n sma first and calculate the next n period ema
-    ema = torch.zeros_like(data, dtype=data.dtype, device=data.device)
-    ema[:n] = torch.mean(data[:n])
+def snd_normalizer(config=config):
+    def _snd_normalizer(x):
+        x = torch.clamp(x, min=config.snd_min, max=config.snd_max)
+        x = (x - config.snd_min) / (config.snd_max - config.snd_min) # 0 ~ 1
+        x = x * 2. # 0 ~ 2
+        x -= 1 # -1 ~ 1
+        return x
+    return _snd_normalizer
 
-    #EMA(current) = ( (Price(current) - EMA(prev) ) x Multiplier) + EMA(prev)
-    for i,j in enumerate(data[n:]):
-        ema[i] = ((j - ema[i-1]) * smoothing_factor) + ema[i-1]
-
-    return ema
+def snd_denormalizer(config=config):
+    def _snd_denormalizer(x):
+        x += 1 # 0 ~ 2
+        x = x / 2. # 0 ~ 1
+        x = x * (config.snd_max - config.snd_min) + config.snd_min
+        return x
+    return _snd_denormalizer
