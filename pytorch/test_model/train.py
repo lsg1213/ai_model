@@ -256,6 +256,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                         sound = list(pool.map(stft, sound))
                     sound = torch.stack(sound)
                     sound = torch.cat([sound.real, sound.imag], 1)
+            pdb.set_trace()
             
             y = model(accel)
             

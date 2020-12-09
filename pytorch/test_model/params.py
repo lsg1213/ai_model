@@ -11,7 +11,7 @@ def get_arg(known=[]):
     args.add_argument('--len', type=int, default=200)
     args.add_argument('--b', type=int, default=200)
     args.add_argument('--opt', type=str, default='adam')
-    args.add_argument('--model', type=str, default='CombineAutoencoder', choices=['CombineAutoencoder', 'ResNext', 'efficientnet'])
+    args.add_argument('--model', type=str, default='CNN', choices=['CNN','CombineAutoencoder', 'ResNext', 'efficientnet'])
     args.add_argument('--resume', action='store_true')
     args.add_argument('--relu', action='store_true')
     args.add_argument('--future', type=bool, default=True)
