@@ -112,7 +112,7 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     
     return out.transpose(1,2)
 
-def snd_normalizer(config=config):
+def snd_normalizer(config):
     def _snd_normalizer(x):
         x = torch.clamp(x, min=config.snd_min, max=config.snd_max)
         x = (x - config.snd_min) / (config.snd_max - config.snd_min) # 0 ~ 1
@@ -121,7 +121,7 @@ def snd_normalizer(config=config):
         return x
     return _snd_normalizer
 
-def snd_denormalizer(config=config):
+def snd_denormalizer(config):
     def _snd_denormalizer(x):
         x += 1 # 0 ~ 2
         x = x / 2. # 0 ~ 1

@@ -6,6 +6,8 @@ from tqdm import tqdm
 import numpy as np
 from torchsummary import summary
 
+
+
 def cal_outputs_conv(inputs, layer):
     if len(layer.kernel_size) == 1:
         if type(inputs) != int:
@@ -205,7 +207,8 @@ class CNN(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CNN, self).__init__()
         self.config = config
-        self.conv1 = nn.Conv1d(inch, 128, 3, padding=1).double()
+        self.inch = inch
+        # self.conv1 = nn.Conv1d(inch, 128, 3, padding=1).double()
         # self.bn1 = nn.BatchNorm1d(16).double()
         self.do1 = nn.Dropout(0.1)
         # self.conv2 = nn.Conv1d(128, 8, 3, padding=1).double()
@@ -213,11 +216,13 @@ class CNN(nn.Module):
         self.do2 = nn.Dropout(0.1)
         # self.li1 = nn.Linear(inputs,100,bias=True).double()
         # self.li2 = nn.Linear(100,outputs,bias=False).double()
-        self.conv1 = nn.Conv1d(12, 128, kernel_size=129, padding=64)
-        self.conv2 = nn.Conv1d(128, 128, kernel_size=129, padding=64)
-        self.conv3 = nn.Conv1d(128, 8, kernel_size=129, padding=64)
+        self.conv1 = nn.Conv1d(12, 128, kernel_size=129, padding=64).double()
+        self.conv2 = nn.Conv1d(128, 128, kernel_size=129, padding=64).double()
+        self.conv3 = nn.Conv1d(128, 8, kernel_size=129, padding=64).double()
 
     def forward(self, x):
+        if x.size(-1) == self.inch:
+            x = x.transpose(-1,-2)
         x = self.conv1(x)
         # x = self.do1(x)
         x = self.conv2(x)
@@ -281,3 +286,11 @@ class FCAutoencoder(nn.Module):
             # out = torch.reshape(out, (out.size(0), self.config.nmels, 8, -1))
             out = torch.reshape(out, (out.size(0), self.config.len, 8))
         return out.type(torch.double)
+
+if __name__ == "__main__":
+    import sys
+    from params import get_arg
+    config = get_arg(sys.argv[1:])
+    device = torch.device('cuda:0')
+    model = CNN(config.len + config.b, config.len, 12, 8, config).to(device).float()
+    summary(model, (12, config.b+config.len))
