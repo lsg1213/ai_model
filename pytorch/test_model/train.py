@@ -48,6 +48,10 @@ def main(config):
             name += f'_weight{config.loss_weight}'
         if config.subtract:
             name += f'_subtract'
+        if config.filter:
+            name += f'_filter_{config.range}'
+        if config.norm:
+            name += f'_norm'
         
     else:
         name = config.name
@@ -205,6 +209,9 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
     epoch_loss = 0.
     epoch_custom = 0.
     epoch_l1 = 0.
+    if config.norm:
+        acc_norm = acc_normalizer(config)
+        snd_norm = snd_normalizer(config)
 
     if config.feature == 'mel':
         melspectrogram = torchaudio.transforms.MelSpectrogram(8192, n_fft=config.nfft, n_mels=config.nmels).to(device)
@@ -212,7 +219,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         stft = wavToSTFT(config, device)
         istft = STFTToWav(config, device)
     elif config.feature == 'wav' and config.filter:
-        filt = filterWithSTFT(config, device)
+        filt = bandPassFilter(config)
     
     if config.loss == 'custom':
         l1 = criterion[1]
@@ -227,6 +234,9 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 optimizer.zero_grad()
             accel = accel.to(device).type(torch.float64)
             sound = sound.to(device).type(torch.float64)
+            if config.norm:
+                accel = acc_norm(accel)
+                sound = snd_norm(sound)
             if config.subtract:
                 sound = -sound
             if config.filter:

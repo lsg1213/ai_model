@@ -112,7 +112,7 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     
     return out.transpose(1,2)
 
-def snd_normalizer(config=config):
+def snd_normalizer(config):
     def _snd_normalizer(x):
         x = torch.clamp(x, min=config.snd_min, max=config.snd_max)
         x = (x - config.snd_min) / (config.snd_max - config.snd_min) # 0 ~ 1
@@ -121,10 +121,51 @@ def snd_normalizer(config=config):
         return x
     return _snd_normalizer
 
-def snd_denormalizer(config=config):
+def snd_denormalizer(config):
     def _snd_denormalizer(x):
         x += 1 # 0 ~ 2
         x = x / 2. # 0 ~ 1
         x = x * (config.snd_max - config.snd_min) + config.snd_min
         return x
     return _snd_denormalizer
+
+def acc_normalizer(config):
+    def _acc_normalizer(x):
+        x = torch.clamp(x, min=config.snd_min, max=config.snd_max)
+        x = (x - config.snd_min) / (config.snd_max - config.snd_min) # 0 ~ 1
+        x = x * 2. # 0 ~ 2
+        x -= 1 # -1 ~ 1
+        return x
+    return _acc_normalizer
+
+def acc_denormalizer(config):
+    def _acc_denormalizer(x):
+        x += 1 # 0 ~ 2
+        x = x / 2. # 0 ~ 1
+        x = x * (config.snd_max - config.snd_min) + config.snd_min
+        return x
+    return _acc_denormalizer
+
+def highPassFilter(config):
+    def _highPassFilter(wav):
+        wav = torchaudio.functional.highpass_biquad(wav, config.sr, int(config.range.split('~')[-1]))
+        return wav
+    return _highPassFilter
+
+def lowPassFilter(config):
+    def _lowPassFilter(wav):
+        wav = torchaudio.functional.lowpass_biquad(wav, config.sr, int(config.range.split('~')[0]))
+        return wav
+    return _lowPassFilter
+
+def bandPassFilter(config):
+    lowpass = lowPassFilter(config)
+    highpass = highPassFilter(config)
+    def _bandPassFilter(wav):
+        wav1 = lowpass(wav)
+        wav1 = highpass(wav1)
+        wav2 = highpass(wav)
+        wav2 = lowpass(wav2)
+        wav = (wav1 + wav2) / 2
+        return wav
+    return _bandPassFilter
