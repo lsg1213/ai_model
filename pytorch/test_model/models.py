@@ -197,30 +197,35 @@ class CombineAutoencoder(nn.Module):
 
         # (batch, self.conv2.output_channels, n_mels, 12)
         x = self.back(x)
+        if self.config.norm:
+            x = torch.tanh(x)
         return x
 
 class CNN(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CNN, self).__init__()
         self.config = config
-        self.conv1 = nn.Conv1d(inch, 16, 3, padding=1).double()
-        self.bn1 = nn.BatchNorm1d(16).double()
+        self.conv1 = nn.Conv1d(inch, 128, 3, padding=1).double()
+        # self.bn1 = nn.BatchNorm1d(16).double()
         self.do1 = nn.Dropout(0.1)
-        self.conv2 = nn.Conv1d(16, 8, 3, padding=1).double()
-        self.bn2 = nn.BatchNorm1d(8).double()
+        # self.conv2 = nn.Conv1d(128, 8, 3, padding=1).double()
+        # self.bn2 = nn.BatchNorm1d(8).double()
         self.do2 = nn.Dropout(0.1)
-        self.li1 = nn.Linear(inputs,100,bias=True).double()
-        self.li2 = nn.Linear(100,outputs,bias=False).double()
+        # self.li1 = nn.Linear(inputs,100,bias=True).double()
+        # self.li2 = nn.Linear(100,outputs,bias=False).double()
+        self.conv1 = nn.Conv1d(12, 128, kernel_size=129, padding=64)
+        self.conv2 = nn.Conv1d(128, 128, kernel_size=129, padding=64)
+        self.conv3 = nn.Conv1d(128, 8, kernel_size=129, padding=64)
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.do1(self.bn1(x))
+        # x = self.do1(x)
         x = self.conv2(x)
-        x = self.do2(self.bn2(x))
+        x = self.conv3(x)
+        # x = self.do2(x)
 
-        x = torch.relu(self.li1(x))
         # x = torch.tanh(self.li2(x))
-        x = self.li2(x)
+        # x = self.li2(x)
 
         return x.transpose(1,2)
 
