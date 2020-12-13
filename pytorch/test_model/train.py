@@ -134,7 +134,7 @@ def main(config):
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
-    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay)
+    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay, verbose=True)
     # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
     startepoch = 0
     min_loss = 10000000000.0
@@ -225,7 +225,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         l1 = criterion[1]
         criterion = criterion[0]
     if train:
-        data_num = len(loader) // 10
+        data_num = len(loader) // 20
     else:
         data_num = len(loader)
     with tqdm(loader) as pbar:
@@ -256,7 +256,6 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                         sound = list(pool.map(stft, sound))
                     sound = torch.stack(sound)
                     sound = torch.cat([sound.real, sound.imag], 1)
-            pdb.set_trace()
             
             y = model(accel)
             
