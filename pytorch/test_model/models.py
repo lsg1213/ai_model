@@ -208,34 +208,22 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
         self.config = config
         self.inch = inch
-        # self.conv1 = nn.Conv1d(inch, 128, 3, padding=1).double()
-        # self.bn1 = nn.BatchNorm1d(16).double()
-        self.do1 = nn.Dropout(0.1)
-        self.do2 = nn.Dropout(0.1)
-        self.do3 = nn.Dropout(0.1)
-        self.do4 = nn.Dropout(0.1)
-        # self.conv2 = nn.Conv1d(128, 8, 3, padding=1).double()
-        # self.bn2 = nn.BatchNorm1d(8).double()
-        # self.li1 = nn.Linear(inputs,100,bias=True).double()
-        # self.li2 = nn.Linear(100,outputs,bias=False).double()
-        self.conv1 = nn.Conv1d(12, 32, kernel_size=129, padding=64).double()
-        self.conv2 = nn.Conv1d(12, 32, kernel_size=65, padding=32).double()
-        self.conv3 = nn.Conv1d(12, 32, kernel_size=257, padding=128).double()
-        self.conv4 = nn.Conv1d(12, 32, kernel_size=33, padding=16).double()
-        self.conv5 = nn.Conv1d(128, 8, kernel_size=129, padding=64).double()
+
+        # self.conv1 = nn.Conv1d(12, 32, kernel_size=129, padding=64).double()
+        # self.conv2 = nn.Conv1d(12, 32, kernel_size=65, padding=32).double()
+        self.conv1 = nn.Conv1d(12, 32, kernel_size=257, padding=128).double()
+        self.conv2 = nn.Conv1d(32, 32, kernel_size=257, padding=128).double()
+
+        self.conv3 = nn.Conv1d(32, 8, kernel_size=257, padding=128).double()
 
     def forward(self, x):
-        x1 = x2 = x3 = x4 = x
         # x1 = self.do1(x)
         # x2 = self.do2(x)
         # x3 = self.do3(x)
         # x4 = self.do4(x)
-        x1 = self.conv1(x1)
-        x2 = self.conv2(x2)
-        x3 = self.conv3(x3)
-        x4 = self.conv4(x4) 
-        x = torch.cat([x1,x2,x3,x4], dim=1)
-        x = torch.tanh(self.conv5(x))
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
         return x.transpose(1,2)
 
 class FCAutoencoder(nn.Module):
