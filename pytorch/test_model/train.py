@@ -228,7 +228,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         data_num = len(loader) // 10
     else:
         data_num = len(loader)
-    with tqdm(loader) as pbar:
+    with tqdm(loader, total=data_num) as pbar:
         for index, (accel, sound) in enumerate(pbar):
             if train:
                 optimizer.zero_grad()
