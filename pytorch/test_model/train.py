@@ -134,8 +134,8 @@ def main(config):
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
     else:
         raise ValueError(f'optimzier must be sgd or adam, current is {config.opt}')
-    lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay, verbose=True)
-    # lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.01, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
+    # lr_schedule = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=config.decay, verbose=True)
+    lr_schedule = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=config.decay, patience=1, threshold=0.001, threshold_mode='rel', cooldown=0, min_lr=0, eps=1e-08, verbose=True)
     startepoch = 0
     min_loss = 10000000000.0
     earlystep = 0
@@ -180,8 +180,8 @@ def main(config):
         if config.loss == 'custom':
             writer.add_scalar('val/val_custom', val_custom, epoch)
             writer.add_scalar('train/train_custom', train_custom, epoch)
-        # lr_schedule.step(val_loss)
-        lr_schedule.step()
+        lr_schedule.step(val_loss)
+        # lr_schedule.step()
         torch.save({
             'model': model.state_dict(),
             'epoch': epoch,
@@ -201,7 +201,7 @@ def main(config):
             min_loss = val_custom
         else:
             earlystep += 1
-            if earlystep == 5:
+            if earlystep == 3:
                 print('Early stop!')
                 break
 
@@ -225,7 +225,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         l1 = criterion[1]
         criterion = criterion[0]
     if train:
-        data_num = len(loader) // 20
+        data_num = len(loader) // 10
     else:
         data_num = len(loader)
     with tqdm(loader) as pbar:
@@ -272,18 +272,18 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                 y_p = conv_with_S(y, transfer_f, config)
                 
             if config.loss == 'custom':
-                custom_loss = criterion(sound, y_p.type(sound.dtype))
-                l1_loss = 0.1 * l1(sound, y_p.type(sound.dtype))
+                custom_loss = criterion(y_p.type(sound.dtype), sound)
+                l1_loss = 0.1 * l1(y_p.type(sound.dtype),sound)
                 total_loss = custom_loss + l1_loss
             else:
-                loss = criterion(sound, y_p.type(sound.dtype))
+                loss = criterion(y_p.type(sound.dtype), sound)
             
                 if config.diff == 'diff':
                     if y_p.size(1) <= 1:
                         raise ValueError('Cannot use difference value for loss')
                     diff = get_diff(sound)
                     diff_y_p = get_diff(y_p).type(sound.dtype)
-                    diff_loss = criterion(diff, diff_y_p)
+                    diff_loss = criterion(diff_y_p, diff)
                     total_loss = config.loss_weight * loss + diff_loss
                 elif config.diff == 'double':
                     if y_p.size(1) <= 2:
@@ -292,8 +292,8 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
                     diff_d = get_diff(diff)
                     diff_y_p = get_diff(y_p).type(sound.dtype)
                     diff_y_p_d = get_diff(diff_y_p)
-                    diff_loss = criterion(diff, diff_y_p)
-                    diff_d_loss = criterion(diff_d, diff_y_p_d)
+                    diff_loss = criterion(diff_y_p,diff)
+                    diff_d_loss = criterion(diff_y_p_d, diff_d)
                     total_loss = config.loss_weight * loss + diff_loss + diff_d_loss
                 else:
                     total_loss = loss

@@ -25,7 +25,7 @@ def get_arg(known=[]):
     args.add_argument('--loss_weight', type=float, default=0.1)
     args.add_argument('--split_number', type=int, default=-1)
     args.add_argument('--class_num', type=int, default=200)
-    args.add_argument('--loss', type=str, default='custom', choices=['custom', 'l1', 'l2'])
+    args.add_argument('--loss', type=str, default='l1', choices=['custom', 'l1', 'l2'])
     args.add_argument('--smoo', type=int, default=50)
     args.add_argument('--data_per_epoch', type=int, default=4000)
     args.add_argument('--st2st', action='store_true')

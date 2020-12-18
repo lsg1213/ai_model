@@ -203,6 +203,37 @@ class CombineAutoencoder(nn.Module):
             x = torch.tanh(x)
         return x
 
+# class CNN(nn.Module):
+#     def __init__(self, a,b,c,d,e):
+#         super().__init__()
+#         self.input_chans=12
+#         self.output_chans=8
+#         self.layer_filters = [64, 128, 128, 256]
+#         self.kernel_sizes = [256, 128, 64, 32, 16]
+
+#         self.conv_layers = nn.ModuleList([])
+#         self.conv_layers += [nn.Conv1d(self.input_chans,
+#                                 self.layer_filters[0],
+#                                 kernel_size=self.kernel_sizes[0]).double()]
+#         for idx in range(1, len(self.layer_filters)):
+#             self.conv_layers += [nn.Conv1d(self.layer_filters[idx-1],
+#                                         self.layer_filters[idx],
+#                                         kernel_size=self.kernel_sizes[idx]).double()]
+#         self.conv_layers += [nn.Conv1d(self.layer_filters[-1],
+#                                     self.output_chans,
+#                                     kernel_size=self.kernel_sizes[-1]).double()]
+    
+#     def calc_receptive_field(self):
+#         return np.sum(np.array(self.kernel_sizes)) - len(self.kernel_sizes)
+
+#     def forward(self, x):
+#         for i in range(len(self.conv_layers)-1):
+#             x = self.conv_layers[i](x)
+#             #x = F.tanh(x)
+#         x = self.conv_layers[-1](x)
+        
+#         return x.transpose(1,2)
+
 class CNN(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CNN, self).__init__()
@@ -211,19 +242,29 @@ class CNN(nn.Module):
 
         # self.conv1 = nn.Conv1d(12, 32, kernel_size=129, padding=64).double()
         # self.conv2 = nn.Conv1d(12, 32, kernel_size=65, padding=32).double()
-        self.conv1 = nn.Conv1d(12, 32, kernel_size=257, padding=128).double()
-        self.conv2 = nn.Conv1d(32, 32, kernel_size=257, padding=128).double()
+        self.conv1 = nn.Conv1d(12, 32, kernel_size=129, padding=64).double()
+        self.conv2 = nn.Conv1d(44, 32, kernel_size=129, padding=64).double()
+        self.conv3 = nn.Conv1d(76, 32, kernel_size=129, padding=64).double()
+        self.conv4 = nn.Conv1d(108, 32, kernel_size=129, padding=64).double()
 
-        self.conv3 = nn.Conv1d(32, 8, kernel_size=257, padding=128).double()
+        self.conv5 = nn.Conv1d(140, 8, kernel_size=129, padding=64).double()
 
     def forward(self, x):
-        # x1 = self.do1(x)
-        # x2 = self.do2(x)
-        # x3 = self.do3(x)
-        # x4 = self.do4(x)
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
+        x_ = self.conv1(x)
+        x_ = torch.tanh(x_)
+        x = torch.cat([x_,x],1)
+        x_ = self.conv2(x)
+        x_ = torch.tanh(x_)
+        x = torch.cat([x_,x],1)
+        x_ = self.conv3(x)
+        x_ = torch.tanh(x_)
+        x = torch.cat([x_,x],1)
+        x_ = self.conv4(x)
+        x_ = torch.tanh(x_)
+        x = torch.cat([x_,x],1)
+        x = self.conv5(x)
+        x = torch.tanh(x)
+
         return x.transpose(1,2)
 
 class FCAutoencoder(nn.Module):
