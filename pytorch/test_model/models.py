@@ -158,6 +158,30 @@ class ResNext(nn.Module):
         
         return torch.softmax(torch.stack([x1,x2,x3,x4,x5,x6,x7,x8], 1), -1)
 
+class DividedConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, padding, device='cuda', dimension=1):
+        '''stride is 1, internal kernel size is 3'''
+        super(DividedConv, self).__init__()
+        if not (dimension in (1,2,3)):
+            raise ValueError('dimension must be 1,2,3')
+        if not kernel_size % 2:
+            raise ValueError('kernel size must be odd number')
+        self.layers = []
+        self.dimension = dimension
+        self.pad = padding
+        if self.dimension == 1:
+            self.layers.append(nn.Conv1d(in_channels, out_channels, 3).to(device))
+            for _ in range(int((kernel_size - 1) / 2) - 1):
+                self.layers.append(nn.Conv1d(out_channels, out_channels, 3).to(device))
+
+    def forward(self, x):
+        if self.dimension == 1:
+            x = torch.nn.functional.pad(x,(self.pad, self.pad))
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+
 class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
@@ -321,11 +345,14 @@ class FCAutoencoder(nn.Module):
         return out.type(torch.double)
 
 if __name__ == "__main__":
-    import sys
-    from params import get_arg
-    config = get_arg(sys.argv[1:])
-    config.b = 0
-    config.len = 2048
-    device = torch.device('cuda:0')
-    model = CNN(config.len + config.b, config.len, 12, 8, config).to(device).float()
-    summary(model, (12, config.b+config.len))
+    # import sys
+    # from params import get_arg
+    # config = get_arg(sys.argv[1:])
+    # config.b = 0
+    # config.len = 2048
+    # device = torch.device('cuda:0')
+    # model = CNN(config.len + config.b, config.len, 12, 8, config).to(device).float()
+    # summary(model, (12, config.b+config.len))
+    device = torch.device('cuda')
+    model = DividedConv(8,12,129,64,device)
+    summary(model, (8, 2048))
