@@ -99,7 +99,7 @@ def meltowav(mel, config):
     return wav
 
 def padding(signal, Ls):
-    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
+    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
     
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
@@ -109,8 +109,7 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     signal = padding(signal, Ls)
     # conv1d (batch, inputchannel, W), (outputchannel, inputchannel, W)
     out = F.conv1d(signal.transpose(1,2), S_data.permute([2,1,0]).type(signal.dtype))
-    
-    return out.transpose(1,2)
+    return out.transpose(1,2)[:,:-1]
 
 def snd_normalizer(config):
     def _snd_normalizer(x):
