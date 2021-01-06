@@ -29,6 +29,54 @@ class CustomLoss(_Loss):
     def forward(self, input, target):
         return customLoss(input, target)
 
+<<<<<<< HEAD
+=======
+def customLoss(y, y_pred):
+    return ((y - y.mean())*(y_pred - y_pred.mean()).sum() / torch.sqrt((y - y.mean()).pow(2).sum() * (y_pred - y_pred.mean()).pow(2).sum())).mean()
+
+def data_spread(data, data_length, config):
+    '''
+    (number of file, frames, channel) => (all frames, channel)
+    and cut wave frames by data_length
+    '''
+    if type(data) == list:
+        res = torch.cat([torch.tensor(i) for i in data])
+    return res
+
+def get_diff(data):
+    return data[:,1:] - data[:,:-1]
+
+class makeDataLoader(torch.utils.data.DataLoader):
+    def __init__(self, dataset, config, device, shuffle):
+        super(makeDataLoader, self).__init__()
+        # torch.utils.data.DataLoader(train_dataset, shuffle=True, batch_size=BATCH_SIZE, drop_last=False)
+
+
+class makeDataset(Dataset):
+    def __init__(self, accel, sound, config, device, train=True):
+        self.config = config
+        self.takebeforetime = config.b
+        self.data_length = config.len
+        self.device = device
+
+        if config.feature in ['wav', 'mel']:
+            self.accel = data_spread(accel, self.data_length, config).to(device)
+            self.sound = data_spread(sound, self.data_length, config).to(device)
+        elif config.feature == 'mel':
+            self.accel = accel
+            self.sound = sound
+        self.perm = torch.arange(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel))
+        if train:
+            self.shuffle()
+        self.len = len(self.accel) - config.b - config.len - config.latency
+        if self.config.future:
+            self.len -= self.config.len
+    
+    def shuffle(self):
+        if self.config.feature in ('wav', 'mel'):
+            self.perm = torch.randperm(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel) - self.config.latency - self.config.b - self.config.len)
+
+>>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
 
 def customLoss(y, y_pred):
     vy = y - torch.mean(y)
@@ -37,9 +85,13 @@ def customLoss(y, y_pred):
     cost = torch.sum(vy * vyy) / (torch.sqrt(torch.sum(vy ** 2)) * torch.sqrt(torch.sum(vyy ** 2)))
     return - cost
 
+<<<<<<< HEAD
 def padding(signal, Ls):
     _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
+=======
+
+>>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
 
 def meltowav(mel, config):
     # mel shape = (batch, frames, n_mels, channel=8)
@@ -52,6 +104,10 @@ def meltowav(mel, config):
     wav = torchaudio.transforms.GriffinLim(config.nfft).to(mel.device)(mid)
     return wav
 
+def padding(signal, Ls):
+    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
+    return torch.cat([_pad, signal],1)
+    
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M), signal(batch, frame, K)
     if config.ema:
