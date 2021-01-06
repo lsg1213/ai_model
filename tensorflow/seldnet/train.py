@@ -1,211 +1,262 @@
-import os, argparse, pdb, joblib
+import argparse, pdb
 import numpy as np
-from utils import create_folder, terminateOnNaN
-import models
-import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
-import datetime
-import cls_feature_class, cls_data_generator
-from glob import glob
-from tensorflow.keras.optimizers import Adam
-from tqdm import tqdm
-from tensorboardX import SummaryWriter
+import os
 from params import getparam
-import tensorflow.keras.backend as K
+import sys
+config = getparam(sys.argv[1:])
+os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
+import pickle, joblib
+import tensorflow as tf
+from tensorflow.keras.callbacks import *
+from tensorflow.keras.losses import *
+from tensorflow.keras.metrics import *
+from cls_feature_class import FeatureClass
+from glob import glob
+from concurrent.futures import ThreadPoolExecutor
+import keras_model
+from da_utils import *
+from da_transforms import *
 AUTOTUNE = tf.data.experimental.AUTOTUNE
+'''
+LABEL PRE-PROCESSING
+'''
+def degree_to_class(degrees,
+                    resolution=20,
+                    min_degree=0,
+                    max_degree=180,
+                    one_hot=True):
+    degrees = np.array(degrees)
+    n_classes = int((max_degree-min_degree)/resolution + 2)
 
+    mask = np.logical_and(min_degree <= degrees, degrees <= max_degree)
+    classes = mask * (degrees/resolution) + (1-mask) * (n_classes-1)
+    classes = classes.astype(np.int32)
 
+    if not one_hot:
+        return classes 
+    return np.eye(n_classes, dtype=np.float32)[classes]
 
-def list_element_to_int(li):
-    return [int(i) for i in li]
-def list_element_to_float(li):
-    return [float(i) for i in li]
+def samplewise_gaussian_noise(specs, labels, tau=None):
+    noise = tf.random.normal(specs.shape) * tf.math.reduce_std(specs) * 0.1
+    if tau is not None:
+        noise *= tf.math.log(tf.maximum(tf.random.uniform([]), EPSILON)) * tau
+    return specs + noise, labels
 
-def angle_to_number(label):
-    for i, j in enumerate(label):
-        if j == -1:
-            label[i] = 10
-        else:
-            label[i] = int(label[i] / 20)
-        if not (label[i] in [0,1,2,3,4,5,6,7,8,9,10]):
-            print(label[i])
-            raise ValueError('label has a problem')
-    return label
+def to_dataset(x, y, config, train=False):
+    '''
+    args:
+        x: complex spectrograms [batch, freq, time, chan]
+        y: degrees [0, 20, 40, ... 180, -1]
+    '''
 
-def get_data(config, train=True):
-    feat_cls = cls_feature_class.FeatureClass(config.nfft)
-    gen_cls = cls_data_generator.DataGenerator(config, shuffle=train, train=train)
-
-    data = gen_cls.data
-    label = np.array(angle_to_number(gen_cls.label))
-    flabel = np.array(gen_cls.flabel)
-    for i in range(len(data)):
-        data[i] = np.reshape(data[i], (gen_cls.nb_frames_file, gen_cls.feat_len, gen_cls._2_nb_ch))
-    data = np.array(data)
-    data = np.transpose(data, (0, 3, 1, 2))
-    
-    label = tf.data.Dataset.from_tensor_slices((label, flabel))
-    # label = [sedlabel, label]
-    
-    data_in = (config.batch, gen_cls._2_nb_ch, gen_cls.nb_frames_file, gen_cls.feat_len)
-    data_out = (config.batch, (1, gen_cls.nb_classes))
-    
-    _data = tf.data.Dataset.from_tensor_slices(data)
-    dataset = tf.data.Dataset.zip((_data, label))
+    dataset = tf.data.Dataset.from_tensor_slices((x, y))
     if train:
-        dataset = dataset.repeat(1).shuffle(buffer_size=data.shape[0])
-        dataset = dataset.batch(config.batch, drop_remainder=False)
-        dataset = dataset.prefetch(AUTOTUNE)
-    else:
-        dataset = dataset.batch(config.batch, drop_remainder=False)
-    
-    return dataset, data_in, data_out
+        dataset = dataset.repeat().shuffle(len(x))
+    dataset = dataset.batch(config.batch, drop_remainder=True)
+
+    return dataset.prefetch(AUTOTUNE)
+
+def pre_batch_augment(specs, labels, time_axis=1, freq_axis=0):
+    # specs, labels = samplewise_gaussian_noise(specs, labels, tau=0.5)
+    # specs = random_conv(specs)
+    specs = mask(specs, axis=time_axis, max_mask_size=30, n_mask=2) # time
+    specs = mask(specs, axis=freq_axis, max_mask_size=16, n_mask=2) # freq
+    specs, labels = random_magphase_flip(specs, labels)
+    return specs, labels
+
+def log_minmax_norm_specs(specs, labels=None):
+    mag = specs[..., :specs.shape[-1] // 2]
+    axis = tuple(range(1, len(specs.shape)))
+
+    mag_max = tf.math.reduce_max(mag, axis=axis, keepdims=True)
+    mag_min = tf.math.reduce_min(mag, axis=axis, keepdims=True)
+
+    specs = (mag-mag_min) / tf.maximum(mag_max-mag_min, EPSILON)
+    specs = tf.math.log(tf.maximum(specs, EPSILON))
+
+    if labels is not None:
+        return specs, labels
+    return specs
+
+def da_to_dataset(x, y, config, train=False):
+    '''
+    args:
+        x: complex spectrograms [batch, freq, time, chan]
+        y: degrees [0, 20, 40, ... 180, -1]
+    '''
+    # y = degree_to_class(y)
+
+    dataset = tf.data.Dataset.from_tensor_slices((x, y))
+    if train:
+        dataset = dataset.repeat().shuffle(len(x))
+        # dataset = dataset.map(pre_batch_augment, num_parallel_calls=AUTOTUNE)
+    dataset = dataset.batch(config.batch, drop_remainder=True)
+    dataset = dataset.map(log_minmax_norm_specs)
+    return dataset.prefetch(AUTOTUNE)
+
+def get_data_sizes(x, y):
+    feat_shape = x.shape
+    label_shape = [
+        y[0].shape,
+        y[1].shape,
+        y[2].shape
+    ]
+    return feat_shape, label_shape
 
 
-# @tf.function
-def doaunique(_data):
-    # (data)
-    data = tf.unique(_data)[0] # (unique)
-    if len(data.shape) == 1:
-        return tf.convert_to_tensor(data)
-    else:
-        return tf.sort(data[data != 10])[-1]
+def load_data(path, save=True):
+    try:
+        x = joblib.load(open(path + '_sj_x.joblib','rb'))
+    except:
+        from da_data_utils import from_wav_to_dataset
+        x, max_wav_len = from_wav_to_dataset(path, 'complex', pad=True, config=config)
+        if save:
+            joblib.dump(x, open(path + '_sj_x.joblib', 'wb'))
 
-def sedunique(data):
-    data = tf.unique(data)[0]
-    if len(data) == 1:
-        return tf.zeros(1, dtype=data.dtype)
-    else:
-        return tf.ones(1, dtype=data.dtype)
-
-def get_1_from_frame(fdata, thdoa, thsed):
-    # 
-    if tf.rank(fdata) > 2 and fdata.shape[-1] > 1:
-        tens = tf.ones(fdata.shape[:2], dtype=tf.int64) * 10
-        # fdata = (batch, frame, softmax scores(11))
-        argmax = tf.argmax(fdata,-1) # argmax = (batch, frame label)
-        fdata = tf.reduce_max(fdata,-1) # armax = (batch, frame score)
-        data = tf.map_fn(doaunique, tf.where(tf.cast(fdata, dtype=tf.float32) > thdoa, argmax, tens))
-
-    elif tf.rank(fdata) == 2:
-        zeros = tf.zeros(fdata.shape[:2], dtype=tf.int64)
-        # fdata = (batch, frame), 있다 없다
-        argmax = tf.round(fdata)
-        data = tf.map_fn(sedunique, tf.where(tf.cast(fdata, dtype=tf.float32) > thsed, argmax, zeros))
-        
-    return data
-
-
-def main(config):
-    os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
-    trainset, data_in, data_out = get_data(config)
-    testset, _, _ = get_data(config, train=False)
-    tensorboard_path = 'tensorboard_log/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    if not os.path.exists(tensorboard_path):
-        os.makedirs(tensorboard_path)
-    writer = SummaryWriter(tensorboard_path)
-
-    model = models.get_model(data_in=data_in, data_out=data_out, dropout_rate=config.dropout_rate,
-                            nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=list_element_to_int(config.pool_size.split(',')),
-                            rnn_size=list_element_to_int(config.rnn_size.split(',')), fnn_size=[config.fnn_size], config=config)
-    
-    optimizer = Adam(learning_rate=config.lr)
-    startepoch = 0
-    bce = tf.keras.losses.BinaryCrossentropy()
-    scce = tf.keras.losses.SparseCategoricalCrossentropy()
-    weight = list_element_to_float(config.loss_weights.split(','))
-    sedacc = tf.keras.metrics.Accuracy()
-    doaacc = tf.keras.metrics.Accuracy()
-    maxacc = 0.
-    decay_patience = 5
-    decay_num = 0
-    min_lr = 1e-4
-    for epoch in range(startepoch, config.epoch):
-        with tqdm(trainset) as pbar:
-            for idx, (x, y) in enumerate(pbar):
-                label = tf.cast(y[0], dtype=tf.int64) # (batch, label)
-                flabel = tf.cast(y[1], dtype=tf.int64) # (batch, frame, label)
-
-                sedlabel = tf.cast(tf.ones_like(label) * 10 != label, dtype=tf.int64)
-                sedflabel = tf.cast(tf.ones_like(flabel) * 10 != flabel, dtype=tf.int64)
-                with tf.GradientTape() as tape:
-                    tape.watch(x)
-                    logits = model(x, training=True) # logits = (sed, doa)
-                    sedloss = bce(sedflabel, logits[0]) * weight[0]
-                    doaloss = scce(flabel, logits[1]) * weight[1]
-                    loss = sedloss + doaloss
-                if config.mode == 'frame':
-                    sedpred = tf.argmax(logits[0], -1) # (batch, framelabel)
-                    doapred = logits[1] # (batch, framelabel)
-                    
-                sedpred = tf.cast(get_1_from_frame(sedpred, config.thdoa, config.thsed), dtype=sedpred.dtype)
-                doapred = tf.cast(get_1_from_frame(doapred, config.thdoa, config.thsed), dtype=doapred.dtype)
-                sedpred = tf.cast(sedpred != 10, dtype=sedpred.dtype)
-                sedacc.update_state(sedlabel, sedpred)
-                doaacc.update_state(label, doapred)
-                
-                grads = tape.gradient(loss, model.trainable_weights)
-                optimizer.apply_gradients(zip(grads, model.trainable_weights))
-                pbar.set_postfix(epoch=f'{epoch:3}', loss=f'{loss.numpy():0.4}', doaacc=f'{doaacc.result().numpy():0.4}', sedacc=f'{sedacc.result().numpy():0.4}')
-        writer.add_scalar('train/total_loss',loss.numpy(),epoch)
-        writer.add_scalar('train/sed_loss',sedloss.numpy(),epoch)
-        writer.add_scalar('train/doa_loss',doaloss.numpy(),epoch)
-        writer.add_scalar('train/sed_acc',sedacc.result().numpy(),epoch)
-        writer.add_scalar('train/doa_acc',doaacc.result().numpy(),epoch)
-        sedacc.reset_states()
-        doaacc.reset_states()
-
-        with tqdm(testset) as pbar:
-            for idx, (x, y) in enumerate(pbar):
-                label = tf.cast(y[0], dtype=tf.int64) # (batch, label)
-                flabel = tf.cast(y[1], dtype=tf.int64) # (batch, frame, label)
-
-                sedlabel = tf.cast(tf.ones_like(label) * 10 != label, dtype=tf.int64)
-                sedflabel = tf.cast(tf.ones_like(flabel) * 10 != flabel, dtype=tf.int64)
-                with tf.GradientTape() as tape:
-                    tape.watch(x)
-                    logits = model(x, training=False) # logits = (sed, doa)
-                    sedloss = bce(sedflabel, logits[0]) * weight[0]
-                    doaloss = scce(flabel, logits[1]) * weight[1]
-                    loss = sedloss + doaloss
-                if config.mode == 'frame':
-                    sedpred = tf.argmax(logits[0], -1) # (batch, framelabel)
-                    doapred = logits[1] # (batch, framelabel)
-                sedpred = tf.cast(get_1_from_frame(sedpred, config.thdoa, config.thsed), dtype=sedlabel.dtype)
-                doapred = tf.cast(get_1_from_frame(doapred, config.thdoa, config.thsed), dtype=label.dtype)
-                sedpred = tf.cast(sedpred != 10, dtype=sedpred.dtype)
-                
-                sedacc.update_state(sedlabel, sedpred)
-                doaacc.update_state(label, doapred)
-                
-                pbar.set_postfix(epoch=f'{epoch:3}', val_loss=f'{loss.numpy():0.4}', val_doaacc=f'{doaacc.result().numpy():0.4}', val_sedacc=f'{sedacc.result().numpy():0.4}')
-        if maxacc < doaacc.result().numpy():
-            decay_num = 0
-            maxacc = doaacc.result().numpy()
-            tf.keras.models.save_model(model, os.path.join('model_save', f'{epoch}_valacc{doaacc.result().numpy():0.4}.tf'))
+    try:
+        labels = joblib.load(open(path + '_sj_y.joblib', 'rb'))
+    except:
+        from scipy.io import loadmat
+        sr_over_r = 48000 // 16000
+        labels = []
+        hop_size = config.nfft // 2
+        window_size = config.nfft
+        if not os.path.exists(path + '/metadata_wavs.mat'):
+            y = loadmat(path + '/angle.mat')['phi'][0]
+            y = y[:450]
+            for i in range(len(y)):
+                angle = y[i]
+                if angle == -1:
+                    angle = 10
+                else:
+                    angle /= 20
+                tmp = angle * np.ones(((max_wav_len//sr_over_r) // hop_size + 1, window_size))
+                labels.append(tmp)
+            y = np.stack(labels, 0)
+            vadlabel = y != 10
+            labels = y.min(-1, keepdims=True)
+            slabel = labels.min(-2)
+            labels = (vadlabel, labels, slabel)
         else:
-            decay_num += 1
-            if decay_num == decay_patience:
-                old_lr = float(K.get_value(optimizer.lr))
-                print(f'lr decay to {max(old_lr * config.decay, min_lr)}')
-                K.set_value(optimizer.lr, max(old_lr * config.decay, min_lr))
-                decay_num = 0
-        writer.add_scalar('test/total_loss',loss.numpy(),epoch)
-        writer.add_scalar('test/sed_loss',sedloss.numpy(),epoch)
-        writer.add_scalar('test/doa_loss',doaloss.numpy(),epoch)
-        writer.add_scalar('test/sed_acc',sedacc.result().numpy(),epoch)
-        writer.add_scalar('test/doa_acc',doaacc.result().numpy(),epoch)
-        sedacc.reset_states()
-        doaacc.reset_states()
+            y = loadmat(path + '/metadata_wavs.mat')
+            for i in range(len(y['phi'][0])):
+                start = y['voice_start'][0][i]
+                end = y['voice_end'][0][i]
+                angle = y['phi'][0][i]
+                
+                if angle == -1:
+                    angle = 10
+                else:
+                    angle /= 20
 
-        
+                tmp = 10 * np.ones(((max_wav_len//sr_over_r) // hop_size + 1, window_size)) 
+                tmp_y = np.concatenate([10 * np.ones(start), angle * np.ones(end-start), 10 * np.ones(max_wav_len - end)], 0)
+                tmp_y = tmp_y[::sr_over_r] # label resampling
+                for k,j in enumerate(range(0, len(tmp_y), hop_size)):
+                    _tmp = tmp_y[j:(j+window_size)]
+                    tmp[k][:len(_tmp)] = _tmp
+                labels.append(tmp)
+            
+            y = np.stack(labels, 0)
+            vadlabel = y != 10
+            labels = y.min(-1, keepdims=True)
+            slabel = labels.min(-2)
+            labels = (vadlabel, labels, slabel)
+        if save:
+            joblib.dump(labels, open(path + '_sj_y.joblib', 'wb'))
+    assert len(x) == len(labels[0])
+    return x, labels
 
-def train(model, dataset):
-    pass
-    
+
 
 if __name__ == "__main__":
-    import sys
-    arg = getparam(sys.argv[1:])
-    main(arg)
+    print(config)
+
+    TOTAL_EPOCH = config.epoch
+    BATCH_SIZE = config.batch
+    NAME = config.name if config.name.endswith('.h5') else config.name + '.h5'
+    N_CLASSES = 11
+
+    def dataload(cl):
+        def _dataload(path):
+            data = joblib.load(open(path, 'rb'))
+            data = data.reshape((data.shape[-2], data.shape[-1] // 2, 2)).view(np.float32)
+            return data
+
+        def _labelload(path):
+            label = joblib.load(open(path, 'rb'))
+            return label
+
+        with ThreadPoolExecutor(20) as pool:
+            files = list(pool.map(_dataload, sorted(glob(cl.get_unnormalized_feat_dir()+'/*.joblib'))))
+            labels = list(pool.map(_labelload, sorted(glob(cl.f_dir+'/*.joblib'))))
+        x = np.stack(files, 0)
+        y = np.stack(labels, 0)
+        del files, labels
+        vadlabel = y != 10
+        label = y.min(-1, keepdims=True)
+        slabel = label.min(-2)
+        return x, (vadlabel, label, slabel)
+        
+
+    # cl = FeatureClass(config.nfft, config=config, datasettype='train')
+    # x, y = dataload(cl)
+    # data_in, data_out = get_data_sizes(x, y)
+    # train_data = to_dataset(x, y, config, train=True)
+    # cl = FeatureClass(config.nfft, config=config, datasettype='test')
+    # x, y = dataload(cl)
+    # test_data = to_dataset(x, y, config, train=False)
+
+    """ DATA """
+    # TRAIN DATA
+    PATH = '/root/datasets/ai_challenge/seldnet/seld/train'
+    x, y = load_data(PATH)
+    data_in, data_out = get_data_sizes(x, y)
+    train_data = da_to_dataset(x, y, config, train=True)
+
+    # VALIDATION DATA
+    VAL_PATH = '/root/datasets/ai_challenge/seldnet/seld/validation'
+    val_x, val_y = load_data(VAL_PATH)
+    validation_data = da_to_dataset(val_x, val_y, config, train=False)
+
+    """ MODEL """
+    model = keras_model.da_get_model(data_in=(data_in[1], data_in[2], data_in[3] // 2), data_out=data_out, dropout_rate=config.dropout_rate,
+                                  nb_cnn2d_filt=config.nb_cnn2d_filt, pool_size=[int(i) for i in config.pool_size.split(',')],
+                                  rnn_size=[int(i) for i in config.rnn_size.split(',')], fnn_size=[int(i) for i in config.fnn_size.split(',')],
+                                  classification_mode=config.mode, weights=[int(i) for i in config.loss_weights.split(',')])
     
+    
+    if config.resume:
+        model.load_weights(NAME)
+        print('loadded pretrained model')
+
+    """ TRAINING """
+    callbacks = [
+        # CSVLogger(NAME.replace('.h5', '.log'), append=True),
+        ModelCheckpoint(NAME,
+                        monitor='val_doa_s_out_mean_absolute_error',
+                        mode='min',
+                        save_best_only=True),
+        TerminateOnNaN(),
+        tf.keras.callbacks.TensorBoard(log_dir=f'./tensorboard_log/{NAME}'),
+        EarlyStopping(monitor='val_loss', patience=config.patience),
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, verbose=1)
+    ]
+    # if not config.pretrain:
+    #     callbacks.append(
+    #         LearningRateScheduler(
+    #             custom_scheduler(4096, TOTAL_EPOCH/12, config.lr_div)))
+
+    # for x,y in train_data.take(2):
+    #     yy = model(x)
+    #     pdb.set_trace()
+    
+    model.fit(train_data,
+              epochs=TOTAL_EPOCH,
+              validation_data=validation_data,
+              steps_per_epoch=data_in[0] // config.batch,
+              callbacks=callbacks)
+
+    for x,y in test_data.take(2):
+        yy = model.predict(x)
+        pdb.set_trace()

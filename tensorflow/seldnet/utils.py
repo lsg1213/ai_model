@@ -6,6 +6,24 @@ import numpy as np
 from sklearn import preprocessing
 import tensorflow as tf
 
+def apply_trans_func(org_wav, trans_func):
+    '''
+    INPUT
+    org_wav: single channel wav
+    trans_func: [trans_func_width, output_chan]
+
+    OUTPUT
+    output: [wav_len] or [wav_len, output_chan]
+    '''
+    org_wav = tf.reshape(org_wav, (1, -1, 1))
+    # tf.conv1d is actually cross-correlation
+    # reverse trans_func to get true convolution
+    trans_func = tf.reverse(trans_func, axis=[0])
+    trans_func = tf.expand_dims(trans_func, 1)
+
+    output = tf.nn.conv1d(org_wav, trans_func, 1, 'SAME')
+    return tf.squeeze(output)
+
 def create_folder(folder_name):
     if not os.path.exists(folder_name):
         print('{} folder does not exist, creating it.'.format(folder_name))

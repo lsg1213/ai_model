@@ -2,7 +2,7 @@
 #
 
 
-import os, pdb
+import os, pdb, scipy.io
 import numpy as np
 import scipy.io.wavfile as wav
 import utils
@@ -12,22 +12,12 @@ from IPython import embed
 import matplotlib.pyplot as plot
 from concurrent.futures import ThreadPoolExecutor
 plot.switch_backend('agg')
-
+from glob import glob
 
 class FeatureClass:
-    def __init__(self, nfft=1024, wav_extra_name='', desc_extra_name='', train=True):
-        self._base_folder = os.path.join('/root/datasets/ai_challenge/interspeech20/seld')
-        # Input directories
-        if train:
-            self._aud_dir = os.path.join(self._base_folder, 'train_x.joblib')
-            self._desc_dir = os.path.join(self._base_folder, 'train_y.joblib')
-            self.f_dir = os.path.join(self._base_folder, 'framelabel/train_y_frame.joblib')
-        else:
-            self._aud_dir = os.path.join(self._base_folder, 'test_x.joblib')
-            self._desc_dir = os.path.join(self._base_folder, 'test_y.joblib')
-            self.f_dir = os.path.join(self._base_folder, 'framelabel/test_y_frame.joblib')
-
-        self.train = train
+    def __init__(self, nfft=1024, wav_extra_name='', desc_extra_name='', datasettype='train', config=None):
+        self.config = config
+        self.datasettype = datasettype
         # Output directories
         self._label_dir = None
         self._feat_dir = None
@@ -60,26 +50,44 @@ class FeatureClass:
         if self._default_azi in self._azi_list:
             print('ERROR: chosen default_azi value {} should not exist in azi_list'.format(self._default_azi))
             exit()
-
-        self._audio_max_len_samples = 7 * self._fs  # TODO: Fix the audio synthesis code to always generate 30s of
+        self._second = config.s
+        self._audio_max_len_samples = self._second * self._fs  # TODO: Fix the audio synthesis code to always generate 30s of
         # audio. Currently it generates audio till the last active sound event, which is not always 30s long. This is a
         # quick fix to overcome that. We need this because, for processing and training we need the length of features
         # to be fixed.
 
         self._max_frames = int(np.ceil((self._audio_max_len_samples - self._win_len) / float(self._hop_len)))
         
-    def _load_audio(self, audio_path):
-        fs = self._fs
-        audio = joblib.load(audio_path)
+        self._base_folder = os.path.join(f'/root/datasets/ai_challenge/seldnet/{self.config.dataset}/{self._second}')
+        utils.create_folder(self._base_folder)
+        # Input directories
+        if datasettype == 'train':
+            self.f_dir = os.path.join(self._base_folder, 'train/flabel')
+            self._aud_dir = os.path.join(self._base_folder, 'train')
+            self._desc_dir = os.path.join(self._base_folder, 'train')
+            
+        elif datasettype == 'validation':
+            self.f_dir = os.path.join(self._base_folder, 'validation/flabel')
+            self._aud_dir = os.path.join(self._base_folder, 'validation')
+            self._desc_dir = os.path.join(self._base_folder, 'validation')
 
-        for idx, wav in enumerate(audio):
-            wa = np.transpose(wav, (1,0))[:, :self._nb_channels] / 32768.0 + self._eps
-            if wa.shape[0] < self._audio_max_len_samples:
-                zero_pad = np.zeros((self._audio_max_len_samples - wa.shape[0], wa.shape[1]))
-                audio[idx] = np.vstack((wa, zero_pad))
-            elif wa.shape[0] > self._audio_max_len_samples:
-                audio[idx] = wa[:self._audio_max_len_samples, :]
-        return np.array(audio), fs
+        elif datasettype == 'test':
+            self.f_dir = os.path.join(self._base_folder, 'test/flabel')
+            self._aud_dir = os.path.join(self._base_folder, 'test')
+            self._desc_dir = os.path.join(self._base_folder, 'test')
+
+        utils.create_folder(self.f_dir)
+        
+    def _load_audio(self, audio_path):
+        fs, audio = scipy.io.wavfile.read(audio_path)
+        
+        wa = audio[:, :self._nb_channels] / 32768.0 + self._eps
+        if wa.shape[0] < self._audio_max_len_samples:
+            zero_pad = np.zeros((self._audio_max_len_samples - wa.shape[0], wa.shape[1]))
+            wa = np.vstack((wa, zero_pad))
+        elif wa.shape[0] > self._audio_max_len_samples:
+            wa = wa[:self._audio_max_len_samples, :]
+        return wa, fs
 
     # INPUT FEATURES
     @staticmethod
@@ -117,19 +125,18 @@ class FeatureClass:
         return labels
 
     def _extract_spectrogram_for_file(self, audio_filename):
-        audio_in, fs = self._load_audio(audio_filename)
-        flabel = joblib.load(open(self.f_dir, 'rb'))
+        audio_in, fs = self._load_audio(os.path.join(self._aud_dir, audio_filename))
+        
 
-        with ThreadPoolExecutor() as pool:
-            flabel = list(pool.map(self.label_padding, flabel))
-        # audio_spec = np.array(list(map(self._spectrogram, audio_in)))
-        from time import time
-        st = time()
-        with ThreadPoolExecutor(max_workers=80) as pool:
-            flabel_spec = np.array(list(map(self.frametowindow, flabel)))
-        print(time() - st)
-        # joblib.dump(audio_spec.reshape(audio_spec.shape[0], self._max_frames, -1), open(os.path.join(self._feat_dir, audio_filename.split('/')[-1]), 'wb'))
-        joblib.dump(flabel_spec, open(os.path.join('/'.join(self.f_dir.split('/')[:-1]), os.path.basename(self.f_dir).split('frame')[0] + 'window.joblib'), 'wb'))
+        # with ThreadPoolExecutor() as pool:
+        #     flabel = list(pool.map(self.label_padding, flabel))
+        audio_spec = self._spectrogram(audio_in)
+        
+        # with ThreadPoolExecutor(max_workers=80) as pool:
+        #     flabel_spec = np.array(list(map(self.frametowindow, flabel)))
+        
+        joblib.dump(audio_spec.reshape(self._max_frames, -1), open(os.path.join(self._feat_dir, audio_filename.split('/')[-1].split('.')[0]+'.joblib'), 'wb'))
+        # joblib.dump(flabel_spec, open(os.path.join('/'.join(self.f_dir.split('/')[:-1]), os.path.basename(self.f_dir).split('frame')[0] + 'window.joblib'), 'wb'))
 
     def get_list_index(self, azi, ele):
         azi = (azi - self._azi_list[0]) // 10
@@ -227,15 +234,6 @@ class FeatureClass:
         return deg_list
 
 
-    def _get_se_labels(self, _desc_file):
-        se_label = np.zeros((self._max_frames, len(self._unique_classes)))
-        for i, se_class in enumerate(_desc_file['class']):
-            start_frame = _desc_file['start'][i]
-            end_frame = self._max_frames if _desc_file['end'][i] > self._max_frames else _desc_file['end'][i]
-            se_label[start_frame:end_frame + 1, self._unique_classes[se_class]] = 1
-        return se_label
-
-
     # ------------------------------- EXTRACT FEATURE AND PREPROCESS IT -------------------------------
     def extract_all_feature(self, extra=''):
         # setting up folders
@@ -246,7 +244,9 @@ class FeatureClass:
         print('Extracting spectrogram:')
         print('\t\taud_dir {}\n\t\tdesc_dir {}\n\t\tfeat_dir {}'.format(
             self._aud_dir, self._desc_dir, self._feat_dir))
-        self._extract_spectrogram_for_file(self._aud_dir)
+        for aud_dir in os.listdir(self._aud_dir):
+            if '.wav' in aud_dir:
+                self._extract_spectrogram_for_file(aud_dir)
 
     def preprocess_features(self, extra=''):
         # Setting up folders and filenames
@@ -263,13 +263,9 @@ class FeatureClass:
         spec_scaler = preprocessing.StandardScaler()
         train_cnt = 0
         for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
-            if '_x.joblib' in file_name:
-                cnt = 0
-                print(file_cnt, train_cnt, file_name + f'_{cnt}')
-                feat_file = joblib.load(os.path.join(self._feat_dir, file_name))
-                for i in feat_file:
-                    spec_scaler.partial_fit(np.concatenate((np.abs(i), np.angle(i)), axis=1))
-                del feat_file
+            feat_file = joblib.load(os.path.join(self._feat_dir, file_name))
+            spec_scaler.partial_fit(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
+            del feat_file
         joblib.dump(
             spec_scaler,
             normalized_features_wts_file
@@ -280,8 +276,7 @@ class FeatureClass:
         for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
             print(file_cnt, file_name)
             feat_file = joblib.load(os.path.join(self._feat_dir, file_name))
-            
-            feat_file = np.array([spec_scaler.transform(np.concatenate((np.abs(i), np.angle(i)), axis=1)) for i in feat_file])
+            feat_file = spec_scaler.transform(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
             joblib.dump(
                 feat_file,
                 open(os.path.join(self._feat_dir_norm, file_name), 'wb')
@@ -305,54 +300,87 @@ class FeatureClass:
         print('Normalizing feature files:')
         # spec_scaler = joblib.load(normalized_features_wts_file) #load weights again using this command
         for file_cnt, file_name in enumerate(os.listdir(self._feat_dir)):
-                print(file_cnt, file_name)
-                feat_file = np.load(os.path.join(self._feat_dir, file_name))
-                feat_file = spec_scaler.transform(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
-                np.save(
-                    os.path.join(self._feat_dir_norm, file_name),
-                    feat_file
-                )
-                del feat_file
+            print(file_cnt, file_name)
+            feat_file = np.load(os.path.join(self._feat_dir, file_name))
+            feat_file = spec_scaler.transform(np.concatenate((np.abs(feat_file), np.angle(feat_file)), axis=1))
+            np.save(
+                os.path.join(self._feat_dir_norm, file_name),
+                feat_file
+            )
+            del feat_file
         print('normalized files written to {} folder and the scaler to {}'.format(
             self._feat_dir_norm, normalized_features_wts_file))
 
     # ------------------------------- EXTRACT LABELS AND PREPROCESS IT -------------------------------
-    def extract_all_labels(self, mode='regr', weakness=0, extra=''):
-        self._label_dir = self.get_label_dir(mode, weakness, extra)
-        self._mode = mode
-        self._weakness = weakness
+    def extract_all_labels(self, extra=''):
+        self._label_dir = self.get_label_dir(extra)
+        if self.datasettype == 'train':
+            self._label_dir = os.path.join(self._label_dir, 'train')
+        elif self.datasettype == 'validation':
+            self._label_dir = os.path.join(self._label_dir, 'validation')
+        elif self.datasettype == 'test':
+            self._label_dir = os.path.join(self._label_dir, 'test')
 
         print('Extracting spectrogram and labels:')
         print('\t\taud_dir {}\n\t\tdesc_dir {}\n\t\tlabel_dir {}'.format(
             self._aud_dir, self._desc_dir, self._label_dir))
-        utils.create_folder(self._label_dir)
-
-        for file_cnt, file_name in enumerate(os.listdir('/'.join(self._desc_dir.split('/')[:-1]))):
+        
+        for i in sorted(glob(self._desc_dir+'/*_label.joblib')):
+            label = joblib.load(open(i, 'rb'))
+            if label.shape[0] == self._nb_channels:
+                label = label.transpose(-1,-2)
+            labels = np.zeros((self._max_frames, self._nfft // 2), dtype=label.dtype)
+            for ind in range(self._max_frames):
+                start_ind = ind * self._hop_len
+                labels[ind] = label[start_ind + np.arange(0, self._nfft // 2)]
             
-            if '_y.joblib' in file_name:
-                print('file_cnt {}, file_name {}'.format(file_cnt, file_name))
-                wav_filename = '{}.wav'.format(file_name.split('.')[0])
-                desc_file = self._read_desc_file(file_name)
-                self._get_labels_for_file(wav_filename, desc_file)
+            joblib.dump(labels.reshape(self._max_frames, -1), open(os.path.join(self.f_dir, os.path.basename(i)), 'wb'))
+            del label
+            
+
+            
 
     # ------------------------------- Misc public functions -------------------------------
     def get_classes(self):
         return self._unique_classes
 
     def get_normalized_feat_dir(self, extra=''):
-        return os.path.join(
-            self._base_folder,
-            'nfft{}{}_norm'.format(self._nfft, extra)
-        )
+        if self.datasettype == 'train':
+            return os.path.join(
+                self._base_folder + '/train',
+                'nfft{}{}_norm'.format(self._nfft, extra)
+            )
+        elif self.datasettype == 'validation':
+            return os.path.join(
+                self._base_folder + '/validation',
+                'nfft{}{}_norm'.format(self._nfft, extra)
+            )
+        elif self.datasettype == 'test':
+            return os.path.join(
+                self._base_folder + '/test',
+                'nfft{}{}_norm'.format(self._nfft, extra)
+            )
 
     def get_unnormalized_feat_dir(self, extra=''):
-        return os.path.join(
-            self._base_folder,
-            'nfft{}{}'.format(self._nfft, extra)
-        )
+        if self.datasettype == 'train':
+            return os.path.join(
+                self._base_folder + '/train',
+                'nfft{}{}'.format(self._nfft, extra)
+            )
 
-    def get_label_dir(self, mode=None, weakness=None, extra=''):
-        return '/'.join(self._desc_dir.split('/')[:-1]), '/'.join(self.f_dir.split('/')[:-1])
+        elif self.datasettype == 'validation':
+            return os.path.join(
+                self._base_folder + '/validation',
+                'nfft{}{}'.format(self._nfft, extra)
+            )
+        elif self.datasettype == 'test':
+            return os.path.join(
+                self._base_folder + '/test',
+                'nfft{}{}'.format(self._nfft, extra)
+            )
+
+    def get_label_dir(self, extra=''):
+        return '/'.join(self._desc_dir.split('/')[:-1])
 
     def get_normalized_wts_file(self, extra=''):
         return os.path.join(
@@ -371,7 +399,6 @@ class FeatureClass:
 
 if __name__ == "__main__":
     import librosa, pickle
-    from glob import glob
     import concurrent.futures as fu
     import scipy.io
     def loading(path):
