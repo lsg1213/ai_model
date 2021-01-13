@@ -30,9 +30,17 @@ class CustomLoss(_Loss):
         return customLoss(input, target)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+def customLoss(y, label):
+    return - ((y - y.mean())*(label - label.mean()).sum() / torch.sqrt((y - y.mean()).pow(2).sum() * (label - label.mean()).pow(2).sum())).mean()
+=======
+<<<<<<< HEAD
+>>>>>>> alldata
 =======
 def customLoss(y, y_pred):
     return ((y - y.mean())*(y_pred - y_pred.mean()).sum() / torch.sqrt((y - y.mean()).pow(2).sum() * (y_pred - y_pred.mean()).pow(2).sum())).mean()
+>>>>>>> master
 
 def data_spread(data, data_length, config):
     '''
@@ -105,20 +113,77 @@ def meltowav(mel, config):
     return wav
 
 def padding(signal, Ls):
-    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
+    _pad = torch.zeros((signal.size(0), Ls, signal.size(2)), device=signal.device, dtype=signal.dtype)
     return torch.cat([_pad, signal],1)
     
 def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     # S_data(Ls, K, M), signal(batch, frame, K)
-    if config.ema:
-        signal = ema(signal, n=2)
     Ls = S_data.size(0)
     K = S_data.size(1)
     signal = padding(signal, Ls)
     # conv1d (batch, inputchannel, W), (outputchannel, inputchannel, W)
     out = F.conv1d(signal.transpose(1,2), S_data.permute([2,1,0]).type(signal.dtype))
-    
-    return out.transpose(1,2)
+
+    return out.transpose(1,2)[:,:-1]
+
+def snd_normalizer(config):
+    def _snd_normalizer(x):
+        x = torch.clamp(x, min=config.snd_min, max=config.snd_max)
+        x = (x - config.snd_min) / (config.snd_max - config.snd_min) # 0 ~ 1
+        x = x * 2. # 0 ~ 2
+        x -= 1 # -1 ~ 1
+        return x
+    return _snd_normalizer
+
+def snd_denormalizer(config):
+    def _snd_denormalizer(x):
+        x += 1 # 0 ~ 2
+        x = x / 2. # 0 ~ 1
+        x = x * (config.snd_max - config.snd_min) + config.snd_min
+        return x
+    return _snd_denormalizer
+
+def acc_normalizer(config):
+    def _acc_normalizer(x):
+        x = torch.clamp(x, min=config.snd_min, max=config.snd_max)
+        x = (x - config.snd_min) / (config.snd_max - config.snd_min) # 0 ~ 1
+        x = x * 2. # 0 ~ 2
+        x -= 1 # -1 ~ 1
+        return x
+    return _acc_normalizer
+
+def acc_denormalizer(config):
+    def _acc_denormalizer(x):
+        x += 1 # 0 ~ 2
+        x = x / 2. # 0 ~ 1
+        x = x * (config.snd_max - config.snd_min) + config.snd_min
+        return x
+    return _acc_denormalizer
+
+def highPassFilter(config):
+    def _highPassFilter(wav):
+        wav = torchaudio.functional.highpass_biquad(wav, config.sr, int(config.range.split('~')[-1]))
+        return wav
+    return _highPassFilter
+
+def lowPassFilter(config):
+    def _lowPassFilter(wav):
+        wav = torchaudio.functional.lowpass_biquad(wav, config.sr, int(config.range.split('~')[0]))
+        return wav
+    return _lowPassFilter
+
+def bandPassFilter(config):
+    lowpass = lowPassFilter(config)
+    highpass = highPassFilter(config)
+    def _bandPassFilter(wav):
+        wav1 = lowpass(wav)
+        wav1 = highpass(wav1)
+        wav2 = highpass(wav)
+        wav2 = lowpass(wav2)
+        wav = (wav1 + wav2) / 2
+        return wav
+    return _bandPassFilter
+
 
 def ema(data, n=2):
     '''
@@ -176,4 +241,8 @@ def filterWithSTFT(config, device=torch.device('cpu')):
             st[:,:,:max(low - 1,0),:] *= 0
             st[:,:,min(high + 1, st.shape[1]):,:] *= 0
             return torch.stack(list(map(istft, st)))
+<<<<<<< HEAD
     return _filter
+=======
+    return _filter
+>>>>>>> alldata
