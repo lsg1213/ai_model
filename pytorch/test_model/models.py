@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import numpy as np
 from torchsummary import summary
+from concurrent.futures import ThreadPoolExecutor
 
 
 
@@ -189,13 +190,7 @@ class CombineAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(CombineAutoencoder, self).__init__()
         self.config = config
-        # self.conv1 = nn.Conv1d(inch, 128, 3, stride=2, padding=1)
-        # self.batchnorm1 = nn.BatchNorm1d(128)
-        # self.dropout1 = nn.Dropout(p=0.2)
-        # self.conv2 = nn.Conv1d(128, 8, 1)
-        # self.batchnorm2 = nn.BatchNorm1d(8)
-        # self.dropout2 = nn.Dropout(p=0.2)
-        if config.feature == 'mel':
+        if config.feature == ['mel','stft']:
             self.conv1 = nn.Conv2d(inch, 64, 3, padding=1)
             self.batchnorm1 = nn.BatchNorm2d(64)
             self.conv2 = nn.Conv2d(64, 128, 3, padding=1)

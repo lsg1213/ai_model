@@ -29,13 +29,44 @@ def write_wav(data, sr=8192, name='test_gen'):
     write(name+'.wav', sr, data)
     return data
 
+class smooTestDataset(Dataset):
+    def __init__(self, accel, sound, config):
+        self.config = config
+        self.accel = torch.from_numpy(np.array(self.flatten(accel)))
+        self.sound = torch.from_numpy(np.array(self.flatten(sound)))
+
+        self.index = torch.arange(0, len(self.sound), self.len - self.smoo)
+
+    def flatten(self, data):
+        return [x for y in data for x in y]
+
+    def __len__(self):
+        return len(self.index)
+
+    def __getitem__(self, idx):
+        index = self.index[idx]
+        frame_size = self.config.b
+        if self.config.future:
+            frame_size += self.config.len
+        
+        sound_index = index + frame_size + self.config.latency
+        
+        accel = self.accel[index:index + frame_size]
+        
+        sound = self.sound[sound_index:sound_index + self.config.len + self.config.smoo]
+
+        if accel.size(0) != frame_size:
+            accel = torch.cat([accel,torch.zeros((frame_size - accel.size(0), accel.size(1)), device=accel.device, dtype=accel.dtype)])
+        if sound.size(0) != self.split_num:
+            sound = torch.cat([sound,torch.zeros((self.split_num - sound.size(0), sound.size(1)), device=sound.device, dtype=sound.dtype)])
+        return accel.transpose(0,1), sound
+
+
 class testDataset(Dataset):
     def __init__(self, accel, sound, config):
         self.config = config
         self.accel = torch.from_numpy(np.array(self.flatten(accel)))
         self.sound = torch.from_numpy(np.array(self.flatten(sound)))
-        
-        self.mode = 'end'
 
         self.split_num = config.split_number
         self.mode = 'center' # split place of out
@@ -60,6 +91,7 @@ class testDataset(Dataset):
         accel = self.accel[index:index + frame_size]
         
         sound = self.split(self.sound[sound_index:sound_index + self.config.len], self.config.len // 2 - (self.config.split_number // 2), self.config.len // 2 + (self.config.split_number // 2))
+
         if accel.size(0) != frame_size:
             accel = torch.cat([accel,torch.zeros((frame_size - accel.size(0), accel.size(1)), device=accel.device, dtype=accel.dtype)])
         if sound.size(0) != self.split_num:
