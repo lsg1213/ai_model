@@ -159,26 +159,29 @@ class ResNext(nn.Module):
         return torch.softmax(torch.stack([x1,x2,x3,x4,x5,x6,x7,x8], 1), -1)
 
 class DividedConv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size, padding, device='cuda', dimension=1):
+    def __init__(self, in_channels, out_channels, kernel_size, padding, activation=None, device='cuda', dimension=1):
         '''stride is 1, internal kernel size is 3'''
         super(DividedConv, self).__init__()
         if not (dimension in (1,2,3)):
             raise ValueError('dimension must be 1,2,3')
         if not kernel_size % 2:
             raise ValueError('kernel size must be odd number')
-        self.layers = []
+        self.layers = nn.ModuleList()
         self.dimension = dimension
         self.pad = padding
+        self.activation = activation
         if self.dimension == 1:
-            self.layers.append(nn.Conv1d(in_channels, out_channels, 3).to(device))
+            self.layers.append(nn.Conv1d(in_channels, out_channels, 3).to(device).double())
             for _ in range(int((kernel_size - 1) / 2) - 1):
-                self.layers.append(nn.Conv1d(out_channels, out_channels, 3).to(device))
+                self.layers.append(nn.Conv1d(out_channels, out_channels, 3).to(device).double())
 
     def forward(self, x):
         if self.dimension == 1:
             x = torch.nn.functional.pad(x,(self.pad, self.pad))
         for layer in self.layers:
             x = layer(x)
+            if self.activation:
+                x = getattr(torch, self.activation)(x)
         return x
 
 
@@ -266,12 +269,18 @@ class CNN(nn.Module):
 
         # self.conv1 = nn.Conv1d(12, 32, kernel_size=129, padding=64).double()
         # self.conv2 = nn.Conv1d(12, 32, kernel_size=65, padding=32).double()
+
         self.conv1 = nn.Conv1d(12, 32, kernel_size=129, padding=64).double()
         self.conv2 = nn.Conv1d(44, 32, kernel_size=129, padding=64).double()
         self.conv3 = nn.Conv1d(76, 32, kernel_size=129, padding=64).double()
         self.conv4 = nn.Conv1d(108, 32, kernel_size=129, padding=64).double()
-
         self.conv5 = nn.Conv1d(140, 8, kernel_size=129, padding=64).double()
+        # activation = 'relu'
+        # self.conv1 = DividedConv(12, 32, 129, 64,activation=activation)
+        # self.conv2 = DividedConv(44, 32, 129, 64,activation=activation)
+        # self.conv3 = DividedConv(76, 32, 129, 64,activation=activation)
+        # self.conv4 = DividedConv(108, 32, 129, 64,activation=activation)
+        # self.conv5 = DividedConv(140, 8, 129, 64,activation=activation)
 
     def forward(self, x):
         x_ = self.conv1(x)
@@ -287,10 +296,43 @@ class CNN(nn.Module):
         x_ = torch.tanh(x_)
         x = torch.cat([x_,x],1)
         x = self.conv5(x)
-        x = torch.tanh(x)
 
         return x.transpose(1,2)
 
+class skip_model(nn.Module):
+    def __init__(self, inputs, outputs, inch, outch, config):
+        super().__init__()
+        self.input_chans = 12
+        self.output_chans = 8
+        self.layer_filters = [64, 128, 256]
+        self.kernel_sizes = [128, 128, 128]
+
+        self.layer_1 = nn.Conv1d(self.input_chans, 128, kernel_size=129, padding=64).double()
+        self.layer_2 = nn.Conv1d(140, 128, kernel_size=129, padding=64).double()
+        self.layer_3 = nn.Conv1d(268, 8, kernel_size=129, padding=64).double()
+
+        # self.layer_1 = DividedConv(self.input_chans, 128, 129, 64)
+        # self.layer_2 = DividedConv(140, 128, 129, 64)
+        # self.layer_3 = DividedConv(268, 8, 129, 64)
+
+    def forward(self, x):
+        #print(f'input {x.shape}')
+        y = self.layer_1(x)
+        y = F.tanh(y)
+        #print(f'layer_1 {x.shape}')
+
+        x = torch.cat([x, y], dim=1)
+
+        y = F.tanh(x)
+        y = self.layer_2(y)
+        #print(f'layer_1 y {y.shape}')
+
+        x = torch.cat([x, y], dim=1)
+
+        x = F.tanh(x)
+        x = self.layer_3(x)
+
+        return x
 class FCAutoencoder(nn.Module):
     def __init__(self, inputs, outputs, inch, outch, config):
         super(FCAutoencoder, self).__init__()

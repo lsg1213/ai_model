@@ -225,7 +225,7 @@ def trainloop(model, loader, criterion, transfer_f, epoch, config=None, optimize
         l1 = criterion[1]
         criterion = criterion[0]
     if train:
-        data_num = len(loader) // 10
+        data_num = len(loader)
     else:
         data_num = len(loader)
     with tqdm(loader, total=data_num) as pbar:
