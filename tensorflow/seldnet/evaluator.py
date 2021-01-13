@@ -8,27 +8,13 @@ from tensorflow.keras.metrics import *
 from da_utils import *
 from da_transforms import *
 import keras_model
-from train import load_data
+from train import load_data, complex_to_log_minmax_norm_specs
 
 
 args = argparse.ArgumentParser()
 args.add_argument('--name', type=str, required=True)
 args.add_argument('--model', type=str, default='EfficientNetB0')
 
-
-def log_minmax_norm_specs(specs, labels=None):
-    mag = specs[..., :specs.shape[-1] // 2]
-    axis = tuple(range(1, len(specs.shape)))
-
-    mag_max = tf.math.reduce_max(mag, axis=axis, keepdims=True)
-    mag_min = tf.math.reduce_min(mag, axis=axis, keepdims=True)
-
-    specs = (mag-mag_min)/tf.maximum(mag_max-mag_min, EPSILON)
-    specs = tf.math.log(tf.maximum(specs, EPSILON))
-
-    if labels is not None:
-        return specs, labels
-    return specs
 
 
 if __name__ == '__main__':
@@ -43,7 +29,7 @@ if __name__ == '__main__':
 
     PATH = '/root/datasets/ai_challenge/seldnet/seld/test'
     x, y = load_data(PATH, save=False)
-    x = log_minmax_norm_specs(x)
+    x = complex_to_log_minmax_norm_specs(x)
     # y = degree_to_class(y, one_hot=False)
     def get_data_sizes(x, y):
         feat_shape = x.shape
@@ -60,11 +46,11 @@ if __name__ == '__main__':
                                   rnn_size=[int(i) for i in config.rnn_size.split(',')], fnn_size=[int(i) for i in config.fnn_size.split(',')],
                                   classification_mode=config.mode, weights=[int(i) for i in config.loss_weights.split(',')])
     model.load_weights(config.name)
-
+    # tf.keras.models.save_model(model, f'model_save/best_57.1.hdf5')
+    # exit()
     # 3. predict
     y_hat = model.predict(x)[2]
     y_hat_cls = np.argmax(y_hat, axis=-1).astype(np.float32)
-    pdb.set_trace()
 
     # print("GROUND TRUTH\n", y)
     # print("PREDICTIONS\n", y_hat_cls)
@@ -73,3 +59,4 @@ if __name__ == '__main__':
     print("MAE:", np.mean(tf.abs(y_hat_cls - y.squeeze(-1))))
     print('angle:', np.mean(tf.abs(y_hat_cls - y.squeeze(-1))) * 20)
     print(confusion_matrix(y, y_hat_cls))
+    

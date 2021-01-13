@@ -64,20 +64,25 @@ def pre_batch_augment(specs, labels, time_axis=1, freq_axis=0):
     specs, labels = random_magphase_flip(specs, labels)
     return specs, labels
 
-def log_minmax_norm_specs(specs, labels=None):
-    mag = specs[..., :specs.shape[-1] // 2]
+def complex_to_log_minmax_norm_specs(specs, labels=None):
+    n_chan = specs.shape[-1] // 2
+    mag = tf.math.sqrt(specs[..., :n_chan]**2 + specs[..., n_chan:]**2)
     axis = tuple(range(1, len(specs.shape)))
 
     mag_max = tf.math.reduce_max(mag, axis=axis, keepdims=True)
     mag_min = tf.math.reduce_min(mag, axis=axis, keepdims=True)
 
-    specs = (mag-mag_min) / tf.maximum(mag_max-mag_min, EPSILON)
+    specs = (mag-mag_min)/tf.maximum(mag_max-mag_min, EPSILON)
     specs = tf.math.log(tf.maximum(specs, EPSILON))
 
     if labels is not None:
         return specs, labels
     return specs
 
+def label_preprocess(spec, label):
+    label = (tf.one_hot(tf.cast(label[0], label[1].dtype), 2), tf.one_hot(label[1], 10), tf.one_hot(label[2], 10))
+
+    return spec, label
 def da_to_dataset(x, y, config, train=False):
     '''
     args:
@@ -91,7 +96,10 @@ def da_to_dataset(x, y, config, train=False):
         dataset = dataset.repeat().shuffle(len(x))
         # dataset = dataset.map(pre_batch_augment, num_parallel_calls=AUTOTUNE)
     dataset = dataset.batch(config.batch, drop_remainder=True)
-    dataset = dataset.map(log_minmax_norm_specs)
+    dataset = dataset.map(complex_to_log_minmax_norm_specs)
+
+    # label processing
+    dataset = dataset.map(label_preprocess)
     return dataset.prefetch(AUTOTUNE)
 
 def get_data_sizes(x, y):
@@ -132,9 +140,10 @@ def load_data(path, save=True):
                     angle /= 20
                 tmp = angle * np.ones(((max_wav_len//sr_over_r) // hop_size + 1, window_size))
                 labels.append(tmp)
-            y = np.stack(labels, 0)
-            vadlabel = y != 10
+            y = np.stack(labels, 0).astype(np.uint8)
+            # vadlabel = (y != 10)
             labels = y.min(-1, keepdims=True)
+            vadlabel = labels
             slabel = labels.min(-2)
             labels = (vadlabel, labels, slabel)
         else:
@@ -157,14 +166,31 @@ def load_data(path, save=True):
                     tmp[k][:len(_tmp)] = _tmp
                 labels.append(tmp)
             
-            y = np.stack(labels, 0)
-            vadlabel = y != 10
-            labels = y.min(-1, keepdims=True)
-            slabel = labels.min(-2)
+            y = np.stack(labels, 0).astype(np.uint8)
+            labels = y.min(-1)
+            vadlabel = labels != 10
+            slabel = labels.min(-1)
             labels = (vadlabel, labels, slabel)
         if save:
             joblib.dump(labels, open(path + '_sj_y.joblib', 'wb'))
     assert len(x) == len(labels[0])
+
+    # filter -1
+    if config.filter:
+        tmp_x = []
+        tmp_labels = []
+        tmp_vad = []
+        for idx, data in enumerate(x):
+            if labels[-1][idx] != 10:
+                tmp_x.append(data)
+                tmp_labels.append(labels[1][idx])
+                tmp_vad.append(labels[0][idx])
+        x = np.stack(tmp_x, 0)
+        labels = np.stack(tmp_labels, 0)
+        vadlabel = np.stack(tmp_vad, 0)
+        slabel = labels.min(-2)
+        labels = (vadlabel, labels, slabel)
+
     return x, labels
 
 
@@ -175,6 +201,8 @@ if __name__ == "__main__":
     TOTAL_EPOCH = config.epoch
     BATCH_SIZE = config.batch
     NAME = config.name if config.name.endswith('.h5') else config.name + '.h5'
+    if config.filter:
+        NAME = NAME[:-3] + '_filter.h5'
     N_CLASSES = 11
 
     def dataload(cl):
@@ -225,8 +253,8 @@ if __name__ == "__main__":
                                   rnn_size=[int(i) for i in config.rnn_size.split(',')], fnn_size=[int(i) for i in config.fnn_size.split(',')],
                                   classification_mode=config.mode, weights=[int(i) for i in config.loss_weights.split(',')])
     
-    
     if config.resume:
+        pdb.set_trace()
         model.load_weights(NAME)
         print('loadded pretrained model')
 
@@ -240,7 +268,7 @@ if __name__ == "__main__":
         TerminateOnNaN(),
         tf.keras.callbacks.TensorBoard(log_dir=f'./tensorboard_log/{NAME}'),
         EarlyStopping(monitor='val_loss', patience=config.patience),
-        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=3, verbose=1)
+        tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.7, patience=3, verbose=1)
     ]
     # if not config.pretrain:
     #     callbacks.append(
@@ -257,6 +285,4 @@ if __name__ == "__main__":
               steps_per_epoch=data_in[0] // config.batch,
               callbacks=callbacks)
 
-    for x,y in test_data.take(2):
-        yy = model.predict(x)
-        pdb.set_trace()
+    os.system(f'CUDA_VISIBLE_DEVICES={int(config.gpus)} python evaluator.py --name {NAME}.h5')

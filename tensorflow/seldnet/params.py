@@ -17,6 +17,7 @@ def getparam(known=[]):
     args.add_argument('--s', type=int, default=8, help='seconds of data')
     args.add_argument('--patience', type=int, default=10)
     args.add_argument('--dataset', type=str, default='seld', choices=['seld', 'clean_iris'])
+    args.add_argument('--filter', action='store_true')
     
     args.add_argument('--dropout_rate', type=float, default=0.0)
     args.add_argument('--nb_cnn2d_filt', type=int, default=64)
