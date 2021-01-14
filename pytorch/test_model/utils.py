@@ -1,14 +1,10 @@
-import torch
+import torch, torchaudio, pdb, librosa
+from torch.utils.data import DataLoader, Dataset
 import numpy as np
 import torch.nn.functional as F
+from scipy.io.wavfile import write
+import concurrent.futures as fu
 
-def data_spread(data, config):
-    '''
-    (number of file, frames, channel) => (all frames, channel)
-    '''
-    if type(data) == list:
-        data = torch.from_numpy(np.concatenate(data))
-    return data
 
 class _Loss(torch.nn.Module):
     reduction: str
@@ -29,18 +25,8 @@ class CustomLoss(_Loss):
     def forward(self, input, target):
         return customLoss(input, target)
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
 def customLoss(y, label):
     return - ((y - y.mean())*(label - label.mean()).sum() / torch.sqrt((y - y.mean()).pow(2).sum() * (label - label.mean()).pow(2).sum())).mean()
-=======
-<<<<<<< HEAD
->>>>>>> alldata
-=======
-def customLoss(y, y_pred):
-    return ((y - y.mean())*(y_pred - y_pred.mean()).sum() / torch.sqrt((y - y.mean()).pow(2).sum() * (y_pred - y_pred.mean()).pow(2).sum())).mean()
->>>>>>> master
 
 def data_spread(data, data_length, config):
     '''
@@ -84,22 +70,22 @@ class makeDataset(Dataset):
         if self.config.feature in ('wav', 'mel'):
             self.perm = torch.randperm(len(self.accel) - self.config.latency - self.config.b - 2 * self.config.len if self.config.future else len(self.accel) - self.config.latency - self.config.b - self.config.len)
 
->>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
 
-def customLoss(y, y_pred):
-    vy = y - torch.mean(y)
-    vyy = y_pred - torch.mean(y_pred)
+    def __len__(self):
+        return self.len
 
-    cost = torch.sum(vy * vyy) / (torch.sqrt(torch.sum(vy ** 2)) * torch.sqrt(torch.sum(vyy ** 2)))
-    return - cost
+    def __getitem__(self, idx):
+        idx = self.perm[idx]
+        if self.config.feature in ['wav', 'mel']:
+            index = idx + self.config.latency
+            frame_size = self.config.b
+            if self.config.future:
+                frame_size += self.config.len
+            accel = self.accel[idx:idx + self.config.b + self.config.len].transpose(0,1)
+            sound = self.sound[index + frame_size:index + frame_size + self.config.len]
+        return accel, sound
 
-<<<<<<< HEAD
-def padding(signal, Ls):
-    _pad = torch.zeros((signal.size(0), Ls - 1, signal.size(2)), device=signal.device, dtype=signal.dtype)
-    return torch.cat([_pad, signal],1)
-=======
 
->>>>>>> f7074049ea2ebc5ffa371a3724988c75891712a5
 
 def meltowav(mel, config):
     # mel shape = (batch, frames, n_mels, channel=8)
@@ -123,7 +109,6 @@ def conv_with_S(signal, S_data, config, device=torch.device('cpu')):
     signal = padding(signal, Ls)
     # conv1d (batch, inputchannel, W), (outputchannel, inputchannel, W)
     out = F.conv1d(signal.transpose(1,2), S_data.permute([2,1,0]).type(signal.dtype))
-
     return out.transpose(1,2)[:,:-1]
 
 def snd_normalizer(config):
@@ -183,66 +168,3 @@ def bandPassFilter(config):
         wav = (wav1 + wav2) / 2
         return wav
     return _bandPassFilter
-
-
-def ema(data, n=2):
-    '''
-    exponential mov
-    '''
-    smoothing_factor = 2. / (n + 1)
-    #get n sma first and calculate the next n period ema
-    ema = torch.zeros_like(data, dtype=data.dtype, device=data.device)
-    ema[:n] = torch.mean(data[:n])
-
-    #EMA(current) = ( (Price(current) - EMA(prev) ) x Multiplier) + EMA(prev)
-    for i,j in enumerate(data[n:]):
-        ema[i] = ((j - ema[i-1]) * smoothing_factor) + ema[i-1]
-
-    return ema
-
-
-def wavToSTFT(config, device=torch.device('cpu')):
-    def _wavToSTFT(wav):
-        '''wav (channel, time)'''
-        return torch.functional.stft(wav.to(device), n_fft=config.nfft, win_length=config.win_len, hop_length=config.hop_len, return_complex=True)
-    '''output stft (channel, nfft // 2 + 1, time, 2->real,imag)'''
-    return _wavToSTFT 
-
-def STFTToWav(config, device=torch.device('cpu')):
-    def _STFTToWav(stft):
-        '''stft (channel, config.nfft // 2 + 1, time, 2->real,imag)'''
-        return torch.functional.istft(stft.to(device), n_fft=config.nfft, win_length=config.win_len, hop_length=config.hop_len,)
-    '''output wav (channel, time)'''
-    return _STFTToWav
-
-def filterWithSTFT(config, device=torch.device('cpu')):
-    stft = wavToSTFT(config, device)
-    istft = STFTToWav(config, device)
-    low, high = config.range.split('~')
-    nbins = config.nfft // 2 + 1
-    low = int(int(low) / (config.sr / nbins))
-    high = int(int(high) / (config.sr / nbins))
-    def _filter(inputs): 
-        '''wav (batch, channel, nbins, time)'''
-        if inputs.shape[-2] == nbins:
-            # stft
-            st = inputs
-        else:
-            # wav
-            if len(inputs.shape) == 2:
-                st = stft(inputs)
-            elif len(inputs.shape) == 3:
-                st = torch.stack(list(map(stft, inputs)))
-        if len(st.shape) == 3:
-            st[:,:max(low - 1,0),:] *= 0
-            st[:,min(high + 1, st.shape[1]):,:] *= 0
-            return istft(st)
-        elif len(st.shape) == 4:
-            st[:,:,:max(low - 1,0),:] *= 0
-            st[:,:,min(high + 1, st.shape[1]):,:] *= 0
-            return torch.stack(list(map(istft, st)))
-<<<<<<< HEAD
-    return _filter
-=======
-    return _filter
->>>>>>> alldata
