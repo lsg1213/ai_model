@@ -39,7 +39,7 @@ writer = SummaryWriter(tensorboard_path)
 model_path = './model_save' + f'/{config.name}'
 
 # model_path = sorted(glob(model_path + '/*.pt'), key=lambda x: float(x.split('/')[-1].split('valloss')[-1].split('.pt')[0]))[0]
-model_path = sorted(glob(model_path + '/*.pt'), key=lambda x: int(os.path.basename(x).split('_')[0]), reverse=True)
+model_path = sorted(glob(model_path + '/*.pt'), key=lambda x: int(os.path.basename(x).split('_')[0]), reverse=True)[:1]
 # print(model_path.split('/')[-1])
 PATH = '/root/datasets/ai_challenge'
 if config.dataset == 'tedrium':
@@ -64,9 +64,9 @@ elif config.dataset == 'libri':
 		return joblib.load(open(path, 'rb'))
 
 	with concurrent.futures.ThreadPoolExecutor() as pool:
-		eval_x = list(pool.map(loading, sorted(glob(wavpath + '/*.joblib'))))
+		eval_x = list(pool.map(loading, sorted(glob(wavpath + '/*.joblib')[:100])))
 	with concurrent.futures.ThreadPoolExecutor() as pool:
-		eval_y = list(pool.map(loading, sorted(glob(labelpath + '/*.joblib'))))
+		eval_y = list(pool.map(loading, sorted(glob(labelpath + '/*.joblib')[:100])))
     # eval_x = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_x_mel.pickle', 'rb'))
     # eval_y = pickle.load(open(PATH+'/ST_attention_dataset/libri_aurora_val_y_mel.pickle', 'rb'))
 for i in range(len(eval_x)):
@@ -117,12 +117,12 @@ for index, path in enumerate(model_path):
 	                preds = post_score.clone()
 	                eval_loss += loss.item()
 	                eval_correct += torch.sum(torch.round(preds) == label.data).cpu()
-
-	                label_seq = win.windows_to_sequence(label.cpu(),config.pad_size,config.step_size)
-	                preds_seq = win.windows_to_sequence(preds.cpu(),config.pad_size,config.step_size)
-	                
+	                # label_seq = win.windows_to_sequence(label.cpu(),config.pad_size,config.step_size)
+	                # preds_seq = win.windows_to_sequence(preds.cpu(),config.pad_size,config.step_size)
+	                label_seq = label.cpu().reshape(-1)
+					pdb.set_trace()
 	                if len(label_seq.unique()) == 2:
-	                    eval_auc += getAUC(preds_seq.cpu(), label_seq.cpu())
+	                    eval_auc += getAUC(preds.cpu().reshape(-1), label_seq)
 	                else:
 	                    auc_count += 1
 	                pbar.set_postfix(accuracy=f'eval_loss: {eval_loss / ((idx+1) + loader_len):0.4}, eval_auc: {eval_auc / (((idx+1) + loader_len) - auc_count):0.4}, eval_acc: {eval_correct / ((idx+1) + loader_len) / 7 / BATCH_SIZE:0.4}')

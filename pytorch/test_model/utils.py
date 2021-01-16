@@ -147,13 +147,13 @@ def acc_denormalizer(config):
 
 def highPassFilter(config):
     def _highPassFilter(wav):
-        wav = torchaudio.functional.highpass_biquad(wav, config.sr, int(config.range.split('~')[-1]))
+        wav = torchaudio.functional.highpass_biquad(wav, config.sr, int(config.range.split('~')[0]))
         return wav
     return _highPassFilter
 
 def lowPassFilter(config):
     def _lowPassFilter(wav):
-        wav = torchaudio.functional.lowpass_biquad(wav, config.sr, int(config.range.split('~')[0]))
+        wav = torchaudio.functional.lowpass_biquad(wav, config.sr, int(config.range.split('~')[-1]))
         return wav
     return _lowPassFilter
 

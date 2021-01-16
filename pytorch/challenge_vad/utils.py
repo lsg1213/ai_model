@@ -67,13 +67,12 @@ class Dataloader_generator():
         label = [self.labels[i] for i in self.perm[idx * (len(self.data) // self.divide): (idx + 1) * (len(self.data) // self.divide)]]
 
         while True:
-            perm = torch.randperm(len(data)).to(self.device)
+            perm = torch.randperm(len(data))
             
-            with fu.ThreadPoolExecutor() as pool:
-                data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
+            data = torch.cat(list(map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(data[i]) for i in perm])), axis=0)
             
-            with fu.ThreadPoolExecutor() as pool:
-                labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
+            
+            labels = torch.cat(list(map(self.win.label_to_window(self.config), [torch.from_numpy(label[i]) for i in perm])), dim=0)
             # with concurrent.futures.ThreadPoolExecutor() as pool:
             #     data = torch.cat(list(pool.map(self.win.preprocess_spec(self.config, feature=self.config.feature), [torch.from_numpy(i) for i in data])), axis=0)
             # with concurrent.futures.ThreadPoolExecutor() as pool:  
@@ -157,13 +156,14 @@ class WindowUtils():
     def preprocess_spec(self, config, feature='mel', skip=1):
         if feature not in ['spec', 'mel', 'mfcc']:
             raise ValueError(f'invalid feature - {feature}')
-
+        todb = torchaudio.transforms.AmplitudeToDB(top_db=80).to(self.device)
         def _preprocess_spec(spec):
-            spec = spec.to(self.device)
+            if type(spec) != torch.Tensor:
+                spec = torch.from_numpy(spec).to(self.device)
             if feature in ['spec']:
                 spec = torch.log(spec + EPSILON)
             elif feature in ['mel']:
-                spec = torchaudio.transforms.AmplitudeToDB(top_db=80).to(self.device)(spec)
+                spec = todb(spec)
             if feature == 'mel':
                 if config.norm == 'timit':
                     spec = (spec - 4.5252) / 2.6146 # normalize

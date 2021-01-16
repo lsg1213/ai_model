@@ -13,3 +13,6 @@
 
 # efficientnet
 ### all efficient related code is cloned from https://github.com/lukemelas/EfficientNet-PyTorch.git
+
+# Listen-Attend-and-Spell-Pytorch
+### all code is cloned from https://github.com/AzizCode92/Listen-Attend-and-Spell-Pytorch.git

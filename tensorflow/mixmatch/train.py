@@ -14,24 +14,24 @@ def get_args():
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
 
-    parser.add_argument('--epochs', type=int, default=512, help='number of epochs, (default: 1024)')
-    parser.add_argument('--batch-size',  type=int, default=128, help='examples per batch (default: 64)')
-    parser.add_argument('--learning-rate', type=float, default=1e-2, help='learning_rate, (default: 0.01)')
+    parser.add_argument('--epochs', type=int, default=2048, help='number of epochs, (default: 1024)')
+    parser.add_argument('--batch-size',  type=int, default=64, help='examples per batch (default: 64)')
+    parser.add_argument('--learning-rate', type=float, default=0.002, help='learning_rate, (default: 0.01)')
 
-    parser.add_argument('--labelled-examples', type=int, default=500, help='number labelled examples (default: 4000')
+    parser.add_argument('--labelled-examples', type=int, default=1000, help='number labelled examples (default: 4000')
     parser.add_argument('--validation-examples', type=int, default=5000, help='number validation examples (default: 5000')
     parser.add_argument('--val-iteration', type=int, default=1024, help='number of iterations before validation (default: 1024)')
     parser.add_argument('--T', type=float, default=0.5, help='temperature sharpening ratio (default: 0.5)')
-    parser.add_argument('--K', type=int, default=3, help='number of rounds of augmentation (default: 2)')
+    parser.add_argument('--K', type=int, default=2, help='number of rounds of augmentation (default: 2)')
     parser.add_argument('--alpha', type=float, default=0.75,
                         help='param for sampling from Beta distribution (default: 0.75)')
-    parser.add_argument('--lambda-u', type=int, default=100, help='multiplier for unlabelled loss (default: 100)')
-    parser.add_argument('--rampup-length', type=int, default=16,
+    parser.add_argument('--lambda-u', type=int, default=75, help='multiplier for unlabelled loss (default: 100)')
+    parser.add_argument('--rampup-length', type=int, default=1024,
                         help='rampup length for unlabelled loss multiplier (default: 16)')
     parser.add_argument('--weight-decay', type=float, default=0.02, help='decay rate for model vars (default: 0.02)')
     parser.add_argument('--ema-decay', type=float, default=0.999, help='ema decay for ema model vars (default: 0.999)')
 
-    # parser.add_argument('--config-path', type=str, default=None, help='path to yaml config file, overwrites config')
+    parser.add_argument('--config-path', type=str, default=None, help='path to yaml config file, overwrites config')
     parser.add_argument('--tensorboard', action='store_true', help='enable tensorboard visualization')
     parser.add_argument('--resume', action='store_true', help='whether to restore from previous training runs')
     parser.add_argument('--gpus', type=str, default='0', help='set gpu numbers')
@@ -40,6 +40,18 @@ def get_args():
 
     return parser.parse_args()
 
+# def load_config(args):
+#     dir_path = os.path.dirname(os.path.realpath(__file__))
+#     config_path = os.path.join(dir_path, args.config_path)
+#     pdb.set_trace()
+#     with open(config_path, 'r') as config_file:
+#         config = yaml.load(config_file, Loader=yaml.FullLoader)
+#     for key in vars(args).keys():
+#         if key in config.keys():
+#             args[key] = config[key]
+#     pdb.set_trace()
+#     return args
+
 def main(args):
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
     start_epoch = 0
@@ -47,6 +59,9 @@ def main(args):
     if args.norm:
         log_path += '_norm'
     ckpt_dir = f'{log_path}/checkpoints'
+    # dir_path = os.path.dirname(os.path.realpath(__file__))
+    # if args.config_path is not None and os.path.exists(os.path.join(dir_path, args.config_path)):
+    #     args = load_config(args)
 
     # tfds version 2.1.0
     datasetX, datasetU, val_dataset, test_dataset, confusion_dataset, num_classes = fetch_dataset(args, log_path)
@@ -128,11 +143,11 @@ def main(args):
             notapprove = 0
             print(f'Saved model checkpoint for epoch {int(model_ckpt.step)} @ {model_save_path}')
             print(f'Saved ema checkpoint for epoch {int(ema_ckpt.step)} @ {ema_save_path}')
-        else:
-            notapprove += 1
-            if notapprove == 10:
-                print(f'Early stop!')
-                break
+        # else:
+        #     notapprove += 1
+        #     if notapprove == 10:
+        #         print(f'Early stop!')
+        #         break
                 
 
         model_ckpt.step.assign_add(1)
