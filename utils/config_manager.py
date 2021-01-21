@@ -3,7 +3,7 @@ import json, argparse, os, pdb
 def saveConfig(path, name, config):
     jsonpath = os.path.join(path, name)
     with open(jsonpath, 'w') as f:
-        json.dump(config, f, sort_keys=True)
+        json.dump(config, f, sort_keys=True, indent=4)
 
 def loadConfig(path, name):
     if not (os.path.splitext(name)[-1] == '.json'):
@@ -17,14 +17,25 @@ def loadConfig(path, name):
         print(f"{jsonpath} config don't exists")
         raise ValueError()
 
-def manageVersion(name):
+def manageVersion(jsonpath):
+    name = os.path.basename(jsonpath)
     name = os.path.splitext(name)[0]
     if '_v(' in name:
         oldversion = int(name.split('_v(')[-1][:-1])
         newversion = str(oldversion + 1)
         name = name.replace(f'_v({str(oldversion)})', f'_v({newversion})')
     else:
-        name += '_v(0)'
+        dirpath = os.path.dirname(jsonpath)
+        from glob import glob
+        path = sorted(glob(f'{os.path.join(os.path.dirname(jsonpath),name)}_v(*'))
+        if len(path) == 0:
+            name += '_v(0)'
+        else: # name만으로 config를 실행시켰는데 해당 버전의 config가 있는 경우
+            oldversion = os.path.splitext(os.path.basename(path[-1]))[0]
+            oldversion = int(oldversion.split('_v(')[-1][:-1])
+            newversion = str(oldversion + 1)
+            name = os.path.basename(path[-1]).replace(f'_v({str(oldversion)})', f'_v({newversion})')
+
     return name + '.json'
 
 def getRealName(jsonpath):
@@ -73,7 +84,7 @@ def getConfig(name:str,
     else: # 기존 config의 미존재
         if use_only_saved:
             raise ValueError('you have to load existing configuration')
-        loaded_config = config
+        loaded_config = vars(config)
 
     # 기존 config와 비교해서 동일한 config가 있는 지 탐색
     dup = findDuplicateConfig(jsonpath, loaded_config)
@@ -81,7 +92,7 @@ def getConfig(name:str,
         print(f'{dup} is the same with your configuration')
         raise ValueError()
     if savemode == 'b':
-        name = manageVersion(name)
+        name = manageVersion(jsonpath)
     if savemode != 'c':
         saveConfig(path, name, loaded_config)
     return argparse.Namespace(**loaded_config)
