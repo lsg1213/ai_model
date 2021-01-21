@@ -32,11 +32,13 @@ def manageVersion(jsonpath):
             name += '_v(0)'
         else: # name만으로 config를 실행시켰는데 해당 버전의 config가 있는 경우
             oldversion = os.path.splitext(os.path.basename(path[-1]))[0]
+            pdb.set_trace()
             oldversion = int(oldversion.split('_v(')[-1][:-1])
             newversion = str(oldversion + 1)
             name = os.path.basename(path[-1]).replace(f'_v({str(oldversion)})', f'_v({newversion})')
-
-    return name + '.json'
+    if os.path.splitext(name)[-1] != '.json':
+        name += '.json'
+    return name
 
 def getRealName(jsonpath):
     name = os.path.basename(jsonpath)
