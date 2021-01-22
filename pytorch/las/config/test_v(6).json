@@ -1,0 +1,14 @@
+{
+    "abspath": "/root",
+    "batch": 128,
+    "dataset": "timit",
+    "decay": 0.7071067811865475,
+    "epoch": 200,
+    "gpus": "3",
+    "hidden": 256,
+    "lr": 0.001,
+    "model": "LAS",
+    "name": "test",
+    "resume": false,
+    "sr": 16000
+}
