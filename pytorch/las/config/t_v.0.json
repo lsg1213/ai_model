@@ -1,0 +1,13 @@
+{
+    "abspath": "/root",
+    "batch": 128,
+    "dataset": "libri",
+    "decay": 0.7071067811865475,
+    "epoch": 200,
+    "hidden": 256,
+    "lr": 0.001,
+    "model": "LAS",
+    "name": "t_v.0",
+    "resume": false,
+    "sr": 16000
+}

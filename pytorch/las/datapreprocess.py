@@ -4,14 +4,14 @@ from torchaudio.transforms import Spectrogram
 from params import getParam
 from python_speech_features import logfbank
 from torchaudio.transforms import Resample
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import cpu_count
+# from concurrent.futures import ProcessPoolExecutor
+# from multiprocessing import cpu_count
 from utils import characterMap
 
 
 
 class Datasets:
-    def __init__(self):
+    def __init__(self, datapath):
         self.train = torchaudio.datasets.LIBRISPEECH(datapath, url='dev-clean', download=True)
         self.test = torchaudio.datasets.LIBRISPEECH(datapath, url='test-clean', download=True)
 
@@ -21,11 +21,11 @@ def resampling(config, device='cpu'):
         if data[1] != config.sr:
             resample = Resample(data[1], config.sr).to(device)
             res = resample(res.to(device)).cpu()
-        return res
+        return res.transpose(0,1)
     return _resampling
 
 def preprocess(data):
-    return logfbank(data)
+    return logfbank(data).transpose(-1,-2)
 
 def preencoding(data, cmap):
     label = data[2].lower()
@@ -38,21 +38,26 @@ def preencoding(data, cmap):
     
 if __name__ == "__main__":
     config = getParam(sys.argv[1:])
-    os.environ['CUDA_VISIBLE_DEVICES'] = config.gpus
     device = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
     datapath = os.path.join(config.abspath, 'datasets/lsj')
-    Dataset = Datasets()
+    Dataset = Datasets(datapath)
     charmap = characterMap()
-
+    from time import time
     for dataset in ['train', 'test']:
+        st = time()
         data = getattr(Dataset, dataset)
         
-        # x = list(map(resampling(config), data))
-        # # data preprocess
+        # data preprocess
+        x = list(map(resampling(config), data))
+        x = list(map(preprocess, x))
         # with ProcessPoolExecutor(max_workers=cpu_count() // 2) as pool:
         #     x = list(pool.map(preprocess, x))
         
-        y = list(map(preencoding, data, charmap))
+        
         # label preprocess
-        with ProcessPoolExecutor(max_workers=cpu_count() // 2) as pool:
-            pass
+        y = list(map(preencoding, data, charmap))
+
+        # save
+        joblib.dump(x, open(os.path.join(datapath, dataset+'_x.joblib'), 'wb'))
+        joblib.dump(y, open(os.path.join(datapath, dataset+'_y.joblib'), 'wb'))
+        print(time() - st, 'seconds')

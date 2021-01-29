@@ -12,15 +12,16 @@ def getParam(known=[]):
     args.add_argument('--decay', type=float, default=1/np.sqrt(2))
     args.add_argument('--batch', type=int, default=128)
     args.add_argument('--resume', action='store_true')    
-    args.add_argument('--dataset', type=str, default='timit', choices=['timit','libri'])
+    args.add_argument('--dataset', type=str, default='libri', choices=['timit','libri'])
     args.add_argument('--abspath', type=str, default='/root')
     args.add_argument('--model', type=str, default='LAS', choices=['LAS'])
     args.add_argument('--sr', type=int, default=16000)
+    args.add_argument('--config_mode', type=str, default='')
 
     # listener argument
     args.add_argument('--hidden', type=int, default=256)
 
     config = args.parse_known_args(known)[0]
     
-    config = getConfig(config.name, config, False)
+    config = getConfig(config.name, config, mode=config.config_mode)
     return config
