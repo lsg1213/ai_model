@@ -64,7 +64,6 @@ def manageMode(config, mode):
 
 def getConfig(name:str, 
               config:argparse.Namespace, 
-              use_only_saved:bool, 
               path:str='./config', 
               mode:str=''):
     '''
@@ -101,10 +100,12 @@ def getConfig(name:str,
             if 'o' in mode:
                 print(f'Loaded config name: {name}')
                 print(f'Only use it')
-                final_config = loaded_config
+                
+                final_config = overWriteConfig(loaded_config, {'gpus': config.gpus})
                 break
-            final_config = overWriteConfig(loaded_config, config)
-
+        elif 'o' in mode:
+            print("You can't use only saved config without loading")
+            raise ValueError()
         else:
             final_config = config
             name = os.path.splitext(name)[0] + '_v.0.json'
