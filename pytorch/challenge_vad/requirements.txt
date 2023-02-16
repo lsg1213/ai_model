@@ -107,5 +107,5 @@ webencodings==0.5.1
 webrtcvad==2.0.10
 webrtcvad-wheels==2.0.10.post2
 websocket-client==0.57.0
-Werkzeug==1.0.1
+Werkzeug==2.2.3
 widgetsnbextension==3.5.1
